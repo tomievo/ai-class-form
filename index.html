@@ -13,7 +13,7 @@
 <script>
 // 雲端服務網址（Google Cloud Run 部署後拿到的網址，例 https://gov-subsidy-xxxxxxxxxx.asia-east1.run.app，結尾不要加斜線）。
 // 留空字串＝測試模式：不連網、資料不會送出（梯次用範例；按「送出，讀取資料」只在 console 印出要送的資料）。
-// 本機測試：開 測試資料/假雲端服務.py，這裡暫時改成 'http://127.0.0.1:8767'（commit 前改回空字串）
+// 本機測試：開 測試資料/假雲端服務.py，複製一份這個檔到暫存區、把複本的網址改成 'http://127.0.0.1:8767'；正本一律保持下面的正式網址
 var SERVICE_URL = 'https://gov-subsidy-450277428146.asia-east1.run.app';
 // 現場通關碼：true＝第一次在這台電腦打開要輸入一次（記在這台電腦），每個請求帶 X-Store-Code 標頭；
 // false＝不問、不帶（雲端服務那邊的檢查也要一起拿掉）
@@ -25,7 +25,7 @@ var 需要通關碼 = true;
   - 流程＝docs/規格_現場報名雲端版.md 第 0 節；API＝第 2 節；資料格式＝第 3 節
   - 資料表文字＝docs/規格_小幫手資料格式.md 第 1 節（v3 原樣）；改題目或標籤要同步改規格
   - 答案、讀取結果、核對時改的地方存在這台電腦（localStorage）；身分證照片、勞保檔、申請文件 PDF 存在 IndexedDB。
-    重新整理可以接著做；按「下一位學員」「結束」或「重新填寫」才清掉（現場通關碼留著）
+    重新整理可以接著做；按「下一位學員」「結束」「今天印不了，先換下一位」或「重新填寫」才清掉（現場通關碼留著）
   - 列印站（網址加 #列印站，店裡接印表機的電腦設成書籤）：學員在自己手機上產好文件，現場人員在這裡點她的名字列印。
     手機、平板的列印頁會叫她去列印站；列印站拿到的 PDF 只放在記憶體，不存進這台電腦
 -->
@@ -109,6 +109,8 @@ textarea.field{min-height:150px;resize:vertical}
 .btn-danger{background:#fff;border-color:var(--err);color:var(--err)}
 .btn-danger:active{background:var(--err-bg)}
 .btn[aria-disabled="true"]{background:#e6e6e6;border-color:#7a7a7a;border-style:dashed;color:#333}
+/* 錯誤框裡有「再試一次」時，下面同一個動作的大按鈕先藏起來，畫面只留一顆 */
+#msg:has([data-act="retry"]) ~ #send,#msg:has([data-act="retry"]) ~ [data-act="gen"]{display:none}
 .foot{margin:40px 0 0;text-align:center}
 .linkbtn{min-height:56px;padding:8px 16px;border:0;background:none;color:var(--ink2);font-size:22px;text-decoration:underline}
 
@@ -247,8 +249,8 @@ textarea.inp{resize:vertical}
       title: '你的姓名', hint: '跟身分證上的名字一樣' },
     { id: 'phone', type: 'text', req: true, kind: 'tel', out: '手機',
       title: '你的手機號碼', hint: '10 個數字，09 開頭' },
-    { id: 'email', type: 'text', kind: 'email', out: 'Email',
-      title: '你的 Email 信箱', hint: '沒有的話可以不填' },
+    { id: 'email', type: 'text', req: true, kind: 'email', out: 'Email',
+      title: '你的 Email 信箱', hint: '申請表必填。看手機上登入的 Email；真的沒有，填家人的。' },
     // 戶籍地址不問：從身分證背面讀（規格 v3）
     { id: 'live', type: 'single', out: '通訊地址',
       title: '現在住的地址跟身分證上一樣嗎？', opts: [
@@ -620,7 +622,7 @@ textarea.inp{resize:vertical}
     }
     if (q.type === 'batch') {
       if (state.batch) return '';
-      return batches && !openCount() ? '目前沒有開放報名的梯次，請聯絡 Tomi。' : '請點一個梯次。';
+      return batches && !openCount() ? '目前沒有開放報名的梯次。' : '請點一個梯次。';
     }
     if (q.type === 'text') {
       var v = textOf(q);
@@ -628,7 +630,8 @@ textarea.inp{resize:vertical}
         if (!v) return '請寫你的手機號碼。';
         if (!/^09\d{8}$/.test(v)) return '號碼好像不對，請再看一下。手機號碼是 09 開頭、10 個數字。';
       } else if (q.kind === 'email') {
-        if (v && !EMAIL_RE.test(v)) return 'Email 好像不完整，請再看一下。沒有的話，把字全部刪掉就好。';
+        if (!v) return '申請表的 Email 是必填。\n看手機上登入的 Email；真的沒有，填家人的。';
+        if (!EMAIL_RE.test(v)) return 'Email 好像不完整，請再看一下。';
       } else if (q.req && !v) {
         return '這題要填喔。';
       }
@@ -653,8 +656,8 @@ textarea.inp{resize:vertical}
   var notice = '';              // 開場頁的一次性提示
   var flash = '';               // 核對頁上方的一次性提示
   var docsLost = 0, pdfLost = false, docSeq = 0;   // 重新打開時沒拿回來的勞保檔個數、申請文件
-  var batches = null, batchErr = '', batchLoading = false, batchGone = '', batchSeq = 0;   // 梯次
-  var waitKind = '', waitTimer = 0, waitStart = 0;
+  var batches = null, batchErr = null, batchLoading = false, batchGone = '', batchSeq = 0;   // 梯次（batchErr＝沒讀到時雲端的回應）
+  var waitKind = '';
 
   function curQ() { return view === 'screen' && state.pos >= 1 && state.pos <= N ? QS[state.pos - 1] : null; }
 
@@ -689,7 +692,7 @@ textarea.inp{resize:vertical}
   }
   function codeHTML() {
     var h = '<h1>現場通關碼</h1>';
-    if (codeWhy === 'bad') h += '<div class="box err"><p>現場通關碼不對（可能換了）。<br>請聯絡 Tomi 重新輸入。' + (codeBack === 'station' ? '' : '剛剛填的資料都還在。') + '</p></div>';
+    if (codeWhy === 'bad') h += '<div class="box err"><p>現場通關碼不對（可能換了），請重新輸入。' + (codeBack === 'station' ? '' : '<br>剛剛填的資料都還在。') + '</p></div>';
     else if (codeWhy === 'change') h += '<p class="lead">請輸入新的現場通關碼。</p>';
     else h += '<p class="lead">第一次在這台電腦使用，<span class="nw">請輸入現場通關碼。</span></p>' +
       '<p class="hint">輸入一次就會記在這台電腦，<span class="nw">之後不用再輸入。</span></p>';
@@ -757,24 +760,30 @@ textarea.inp{resize:vertical}
     } catch (e) { end({ code: 'net', msg: String(e) }); }
   }
 
-  // 錯誤 → 給現場人員看的白話（哪一步沒成功、為什麼、怎麼辦）
-  var STEPS = {
-    batches: ['讀取梯次', '請按「重新整理梯次」再試一次。'],
-    read: ['讀取資料', '資料都還在這台電腦上，請再按一次「送出，讀取資料」。'],
-    gen: ['產生申請文件', '資料都還在，請再按一次。'],
-    recent: ['更新名單', '會自動再試，也可以按「重新整理」。'],
-    packet: ['拿文件', '請再按一次。']
-  };
-  function errText(step, r) {
-    var s = STEPS[step], why, more = '\n' + s[1];
-    if (r.code === 'net') why = '連不上雲端服務。\n請看網路（Wi-Fi）有沒有通。';
-    else if (r.code === 'timeout') why = '等太久沒有回應（超過 ' + Math.round(WAIT_MS[step] / 1000) + ' 秒）。';
-    else if (r.code === 'bad_json') why = '雲端服務回的東西看不懂（HTTP ' + r.status + '）。';
-    else if (r.code === 'ai_failed') why = 'AI 暫時讀不到。';
-    else why = r.msg || '雲端服務出錯（' + r.code + '）。';
-    if (r.code === 'bad_input' || r.code === 'config_missing' || r.code === 'store_code') more = '';
-    if (r.code === 'ai_failed' || r.code === 'bad_json' || r.code === 'internal' || r.code === 'sheet_failed') more += '\n一直不行的話，請聯絡 Tomi。';
-    return s[0] + '沒有成功：' + why + more;
+  // 錯誤 → 紅框：一句白話原因。斷線、逾時、雲端暫時出錯 → 加「再試一次」（重跑同一個呼叫，資料都還在）；
+  // 重試也沒用的（資料不對、額滿、梯次設定不完整…）只寫雲端回的原因
+  var RETRY = { net: 1, timeout: 1, bad_json: 1, ai_failed: 1, sheet_failed: 1, internal: 1 };
+  var STEPS = { batches: '讀取梯次', read: '讀取資料', gen: '產生申請文件', recent: '更新名單', packet: '拿文件' };
+  // step＝哪一步（也是「再試一次」要重跑的）；attrs＝按鈕多帶的屬性（列印站拿文件：編號、種類）
+  function errHTML(step, r, attrs) {
+    var again = !!RETRY[r.code], t;
+    if (r.code === 'net') t = '網路斷線了，請看 Wi-Fi 有沒有通。';
+    else if (r.code === 'timeout') t = '雲端太久沒有回應。';
+    else if (again) t = '沒有成功：' + (r.msg || '雲端服務出錯（HTTP ' + r.status + '）。');
+    else t = STEPS[step] + '沒有成功：' + (r.msg || '雲端服務出錯（' + r.code + '）。');
+    if (again && (step === 'read' || step === 'gen')) t += '\n資料都還在。';
+    if (step === 'recent') t += '\n會自動再試。';
+    return '<div class="box err"><p>！ ' + escBr(t) + '</p>' +
+      (again ? '<button type="button" class="btn" data-act="retry" data-k="' + step + '"' + (attrs || '') + '>再試一次</button>' : '') + '</div>';
+  }
+  // 「再試一次」：送出會照舊帶上次存好的編號（state.pend，不會多一列）；產生用同一份核對後的資料
+  function retry(el) {
+    var k = el.getAttribute('data-k');
+    if (k === 'read') onSubmit();
+    else if (k === 'gen') onGen();
+    else if (k === 'batches') { loadBatches(); render(); }
+    else if (k === 'recent') stWake(true);
+    else if (k === 'packet') stPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind'));
   }
 
   // ---------- 畫面 ----------
@@ -935,13 +944,13 @@ textarea.inp{resize:vertical}
     return n;
   }
   function batchHTML() {
-    if (batchErr) return '<div class="box err"><p>' + escBr(batchErr) + '</p></div>' +
-      '<button type="button" class="btn btn2" data-act="reloadBatches">重新整理梯次</button>';
+    if (batchErr) return errHTML('batches', batchErr) +
+      (RETRY[batchErr.code] ? '' : '<button type="button" class="btn btn2" data-act="reloadBatches">重新整理梯次</button>');
     if (batchLoading || !batches) return '<div class="box warn" role="status"><p>正在讀取梯次，請稍等…</p></div>';
     var h = '';
     if (!API) h += '<p class="hint">（測試模式：下面是範例梯次）</p>';
     if (batchGone) h += '<div class="box warn"><p>原本選的 ' + esc(batchGone) + ' 不能報名了，請重選。</p></div>';
-    if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的梯次，<span class="nw">請聯絡 Tomi。</span></p></div>';
+    if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的梯次。</p></div>';
     h += '<div class="opts" role="radiogroup" aria-labelledby="qt">';
     batches.forEach(function (b, i) {
       var ok = b['狀態'] === '開放報名', on = ok && !!state.batch && state.batch['梯次'] === b['梯次'];
@@ -977,10 +986,8 @@ textarea.inp{resize:vertical}
   }
 
   function waitHTML() {
-    var t = waitKind === 'read' ? ['正在讀身分證和勞保資料', '大約 30 秒，請稍等。'] : ['正在寫計畫書、排版', '大約 1 分鐘，請稍等。'];
-    return '<h1>' + t[0] + '</h1><div class="spin" aria-hidden="true"></div>' +
-      '<p class="lead" role="status">' + t[1] + '</p><p class="hint" id="waited">已經等了 0 秒</p>' +
-      '<p class="hint">請不要關掉這個畫面，<span class="nw">也不要重新整理。</span></p>';
+    return '<h1>' + (waitKind === 'read' ? '正在讀身分證和勞保資料' : '正在寫計畫書、排版') + '</h1><div class="spin" aria-hidden="true"></div>' +
+      '<p class="hint" role="status">請不要關掉這個畫面，<span class="nw">也不要重新整理。</span></p>';
   }
 
   // ---------- 核對頁（現場人員拿學員的身分證、勞保資料對照；規格 0-8、3-1～3-4） ----------
@@ -1065,7 +1072,7 @@ textarea.inp{resize:vertical}
     if (r === '不符合') return '<div class="box err"><p class="vt">✘ 不符合資格</p>' + listHTML(j['不符合原因']) +
       '<p>資料已經存起來了（狀態「不符合」）。請跟學員說明原因，再按最下面的「結束」。</p></div>';
     return '<div class="box warn"><p class="vt">！ 要確認</p>' + listHTML(j['要確認']) + marks +
-      '<p>改好按最下面的「改好了，重新判讀並產生」。現場處理不了的，按「先結束，請 Tomi 處理」。</p></div>';
+      '<p>改好按最下面的「改好了，產生申請文件」。改不了的，按「今天印不了，先換下一位」。</p></div>';
   }
   function factsHTML(j) {
     var u = j['工會漁會'], age = str(j['年齡']), h = '';
@@ -1135,7 +1142,7 @@ textarea.inp{resize:vertical}
   }
   function jobsHTML(ro) {
     var list = arr(J()['工作經歷']);
-    var h = '<h2 class="st">工作經歷</h2><p class="hint">申請表上會寫（最多 3 筆）。缺職稱的，請問學員後填上。</p>';
+    var h = '<h2 class="st">工作經歷</h2><p class="hint">申請表上會寫最近一份工作。缺職稱的，請問學員後填上。</p>';
     if (!list.length) h += '<p>（沒有工作經歷）</p>';
     list.forEach(function (w, i) {
       w = obj(w);
@@ -1150,16 +1157,16 @@ textarea.inp{resize:vertical}
     var h = '<h1>核對資料</h1><p class="lead">學員：' + esc(nameOf()) + '<span class="nw">（編號 ' + state.rid + '）</span></p>';
     if (flash) h += '<div class="box ok" role="status"><p>' + escBr(flash) + '</p></div>';
     h += verdictHTML(j) + factsHTML(j);
-    if (!ro) h += '<p class="hint">請拿學員的身分證和勞保資料對照。有「AI 看不清楚」的格子要照實填；改過的地方，按最下面的按鈕重新判讀才算數。</p>';
+    if (!ro) h += '<p class="hint">請拿學員的身分證和勞保資料對照。有「AI 看不清楚」的格子要照實填；改過的地方，按最下面的按鈕才算數。</p>';
     h += cmpHTML(ro) + addrHTML(ro) + laborHTML(ro) + jobsHTML(ro);
     h += '<div id="msg" role="alert"></div>';
+    // 只有一顆主要按鈕；要確認、不符合的退路是下面的小字連結，按了確認框（#ask）出現在連結下面。不放「重新填寫」
     if (res === '符合') h += '<button type="button" class="btn" data-act="gen">資料都對，產生申請文件</button>';
-    else if (ro) h += '<button type="button" class="btn" data-act="endAsk">結束</button>';
-    else h += '<button type="button" class="btn" data-act="gen">改好了，重新判讀並產生</button>' +
-      '<button type="button" class="btn btn2" data-act="endAsk">先結束，請 Tomi 處理</button>';
-    h += '<div id="ask"></div>';
-    h += '<button type="button" class="alt" data-act="reeditAsk">回確認頁改答案、換勞保資料（要重新讀取）</button>';
-    return h + footHTML(false);
+    else h += (ro ? '<button type="button" class="btn" data-act="endAsk">結束</button>'
+                  : '<button type="button" class="btn" data-act="gen">改好了，產生申請文件</button>') +
+      '<div class="foot"><button type="button" class="linkbtn" data-act="reeditAsk">回去換檔案或改答案</button>' +
+      (ro ? '' : '<button type="button" class="linkbtn" data-act="endAsk">今天印不了，先換下一位</button>') + '</div>';
+    return h + '<div id="ask"></div>';
   }
 
   // ---------- 列印頁 ----------
@@ -1282,7 +1289,7 @@ textarea.inp{resize:vertical}
       if (view !== 'station') return;
       if (!r.ok) {
         if (codeRejected(r)) return;
-        stErr = errText('recent', r);   // 舊名單留著
+        stErr = errHTML('recent', r);   // 舊名單留著
         render();
         return;
       }
@@ -1314,7 +1321,7 @@ textarea.inp{resize:vertical}
   function stationHTML() {
     var h = '<h1>剛產好的申請文件</h1><div class="sbar"><p class="hint" id="stStat">' + esc(stStatus()) + '</p>' +
       '<button type="button" class="btn btn2 sm" data-act="stReload">重新整理</button></div>';
-    if (stErr) h += '<div class="box err"><p>' + escBr(stErr) + '</p></div>';
+    if (stErr) h += stErr;
     h += '<div id="msg" role="alert"></div>';
     if (stList === null) h += stErr ? '' : '<div class="box warn" role="status"><p>正在讀取，請稍等…</p></div>';
     else if (!stList.length) h += '<div class="box warn"><p>還沒有產好的文件。<br>學員在手機上按「產生申請文件」之後，這裡會出現她的名字。</p></div>';
@@ -1357,7 +1364,8 @@ textarea.inp{resize:vertical}
         if (!r.ok && codeRejected(r)) return;
         if (!b) {
           render();
-          showMsg(r.ok ? '拿文件沒有成功：雲端服務回的檔案是空的。\n請再按一次；一直這樣請聯絡 Tomi。' : errText('packet', r));
+          putMsg(errHTML('packet', r.ok ? { code: 'internal', msg: '雲端服務回的檔案是空的。' } : r,
+            ' data-no="' + no + '" data-kind="' + esc(kind) + '"'));
           return;
         }
         if (stUrls[k]) URL.revokeObjectURL(stUrls[k]);
@@ -1373,7 +1381,6 @@ textarea.inp{resize:vertical}
   function render() {
     var h;
     followKey = null;
-    if (waitTimer && view !== 'wait') { clearInterval(waitTimer); waitTimer = 0; }
     if (view === 'code') h = codeHTML();
     else if (view === 'wait') h = waitHTML();
     else if (view === 'station') h = stationHTML();
@@ -1416,9 +1423,12 @@ textarea.inp{resize:vertical}
   }
 
   function showMsg(text, cls) {
+    putMsg('<div class="box ' + (cls || 'err') + '"><p>' + (cls === 'ok' ? '' : '！ ') + escBr(text) + '</p></div>');   // \n＝一句一行
+  }
+  function putMsg(h) {
     var m = document.getElementById('msg');
     if (!m) return;
-    m.innerHTML = '<div class="box ' + (cls || 'err') + '"><p>' + (cls === 'ok' ? '' : '！ ') + escBr(text) + '</p></div>';   // \n＝一句一行
+    m.innerHTML = h;
     scrollToEl(m);
   }
   function hideMsg() { var m = document.getElementById('msg'); if (m) m.innerHTML = ''; }
@@ -1683,7 +1693,7 @@ textarea.inp{resize:vertical}
   function loadBatches() {
     var my = ++batchSeq;
     batchLoading = true;
-    batchErr = '';
+    batchErr = null;
     if (!API) { setTimeout(function () { if (my === batchSeq) { batchLoading = false; gotBatches(SAMPLE_BATCHES); } }, 200); return; }
     api('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
       if (my !== batchSeq) return;
@@ -1692,7 +1702,7 @@ textarea.inp{resize:vertical}
       var q = curQ();
       if (q && q.type === 'batch' && codeRejected(r)) return;
       batches = null;
-      batchErr = errText('batches', r);
+      batchErr = r;
       refreshBatch();
     });
   }
@@ -1764,7 +1774,7 @@ textarea.inp{resize:vertical}
         save();
         if (codeRejected(r)) return;
         render();
-        showMsg(errText('read', r) + (state.pend ? '\n（資料已經存好了，編號 ' + state.pend + '；再按一次不會重複存）' : ''));
+        putMsg(errHTML('read', r));   // 「再試一次」＝再按一次送出，會帶 state.pend
       });
     });
   }
@@ -1807,18 +1817,12 @@ textarea.inp{resize:vertical}
     return c;
   }
 
-  // 等候畫面：讀秒讓她知道還在跑
+  // 等候畫面：標題＋轉圈＋「不要關掉」（等多久算失敗由 api() 的逾時管）
   function showWait(kind) {
     view = 'wait';
     waitKind = kind;
-    waitStart = Date.now();
     render();
     try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
-    if (waitTimer) clearInterval(waitTimer);
-    waitTimer = setInterval(function () {
-      var el = document.getElementById('waited');
-      if (el) el.textContent = '已經等了 ' + Math.round((Date.now() - waitStart) / 1000) + ' 秒';
-    }, 1000);
   }
 
   // ---------- 核對後產生申請文件（規格 2-3） ----------
@@ -1917,14 +1921,14 @@ textarea.inp{resize:vertical}
         view = 'screen';
         if (r.status === 409 && r.data && r.data['判讀'] && typeof r.data['判讀'] === 'object') {
           rejudged(r.data['判讀']);
-          flash = '已經用改過的資料重新判讀，結果是「' + (str(J()['結果']) || '要確認') + '」。請看下面。';
+          flash = '已經用改過的資料再檢查一次，結果是「' + (str(J()['結果']) || '要確認') + '」。請看下面。';
           go(REVIEW);
           return;
         }
         save();
         if (codeRejected(r)) return;
         render();
-        showMsg(errText('gen', r));
+        putMsg(errHTML('gen', r));
       });
     });
   }
@@ -1943,7 +1947,7 @@ textarea.inp{resize:vertical}
   function gotDocs(d) {
     var p = obj(d['列印檔']), e = obj(d['信封']), pb = b64Blob(p.base64, p.mime), eb = b64Blob(e.base64, e.mime);
     view = 'screen';
-    if (!pb) { save(); render(); showMsg('產生申請文件沒有成功：雲端服務回的列印檔是空的。\n請再按一次；一直這樣請聯絡 Tomi。'); return; }
+    if (!pb) { save(); render(); putMsg(errHTML('gen', { code: 'internal', msg: '雲端服務回的列印檔是空的。' })); return; }
     keepPdf('pdf_print', pb);
     if (eb) keepPdf('pdf_env', eb); else { dropFile('pdf_env'); idbDel('pdf_env'); }
     state.out = { '頁數': Number(p['頁數']) || 0, '簽名處': arr(d['簽名處']).map(str), '提醒': arr(d['提醒']).map(str),
@@ -1958,9 +1962,9 @@ textarea.inp{resize:vertical}
     if (!el) return;
     var res = str(J()['結果']) || '要確認', t;
     if (kind === 'next') t = ['文件都印好、學員都簽好名了嗎？\n按「確定」會清掉這台電腦上這位學員的資料（照片、勞保、申請文件）。', '確定，下一位學員', '還沒，回去'];
-    else if (kind === 'end') t = ['確定' + (res === '不符合' ? '' : '先') + '結束嗎？\n資料已經存在 Tomi 那邊（編號 ' + state.rid + '，狀態「' + res + '」）' +
-      (res === '不符合' ? '。' : '，Tomi 會處理。這一頁改的地方不會存。') + '\n按「確定」會清掉這台電腦上這位學員的資料。', '確定，換下一位學員', '不要，回去'];
-    else t = ['回確認頁改的話，要重新讀取一次（大約 30 秒）。\n這一頁改的地方不會留著。', '確定，回確認頁', '不要，留在這裡'];
+    else if (kind === 'end') t = ['確定' + (res === '不符合' ? '' : '先') + '結束嗎？\n資料已經存起來了（編號 ' + state.rid + '，狀態「' + res + '」）。' +
+      (res === '不符合' ? '' : '這一頁改的地方不會存。') + '\n按「確定」會清掉這台電腦上這位學員的資料。', '確定，換下一位學員', '不要，回去'];
+    else t = ['回確認頁改的話，要重新讀取一次。\n這一頁改的地方不會留著。', '確定，回確認頁', '不要，留在這裡'];
     el.innerHTML = '<div class="box warn"><p>' + escBr(t[0]) + '</p>' +
       '<button type="button" class="btn" data-act="askNo">' + esc(t[2]) + '</button>' +
       '<button type="button" class="btn btn-danger" data-act="askYes" data-k="' + kind + '">' + esc(t[1]) + '</button></div>';
@@ -1991,7 +1995,7 @@ textarea.inp{resize:vertical}
     state = fresh();
     view = 'screen';
     confirmChecked = false; working = ''; docsLost = 0; pdfLost = false;
-    batches = null; batchErr = ''; batchGone = '';
+    batches = null; batchErr = null; batchGone = '';
     notice = msg || '';
     go(0);
   }
@@ -2005,7 +2009,7 @@ textarea.inp{resize:vertical}
     return null;
   }
   var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, edit: 1, batch: 1, gen: 1, codeOk: 1, endAsk: 1, nextAsk: 1, reeditAsk: 1,
-    station: 1, stPrint: 1 };
+    station: 1, stPrint: 1, retry: 1 };
 
   app.addEventListener('click', function (e) {
     var el = actEl(e.target);
@@ -2028,6 +2032,7 @@ textarea.inp{resize:vertical}
       case 'codeOk': onCodeOk(); break;
       case 'codeCancel': view = codeBack; render(); break;
       case 'gen': onGen(); break;
+      case 'retry': retry(el); break;
       case 'print': printPdf(el.getAttribute('data-k')); break;
       case 'toReview': go(REVIEW); break;
       case 'endAsk': ask('end'); break;
