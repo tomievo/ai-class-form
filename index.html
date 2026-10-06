@@ -7,21 +7,27 @@
 <meta name="format-detection" content="telephone=no, email=no, address=no">
 <meta name="robots" content="noindex, nofollow">
 <meta property="og:title" content="重返職場 AI 入門班｜報名資料表">
-<meta property="og:description" content="大約 10 分鐘，大多用點的。先準備好身分證。">
+<meta property="og:description" content="現場報名：拍身分證、填資料、上傳勞保，當場產出申請文件。">
 <link rel="icon" href="data:,">
 <title>重返職場 AI 入門班｜報名資料表</title>
 <script>
-// 老師的 Google 試算表網址（Apps Script 部署成「網頁應用程式」後拿到的 /exec 網址）。
-// 留空字串＝測試模式：按「送出」不會送出，只在 console 印出要送的資料。設定方法：同資料夾的 Google設定步驟.md
-var APPS_SCRIPT_URL = '';
+// 雲端服務網址（Google Cloud Run 部署後拿到的網址，例 https://gov-subsidy-xxxxxxxxxx.asia-east1.run.app，結尾不要加斜線）。
+// 留空字串＝測試模式：不連網、資料不會送出（梯次用範例；按「送出，讀取資料」只在 console 印出要送的資料）。
+// 本機測試：開 測試資料/假雲端服務.py，這裡暫時改成 'http://127.0.0.1:8767'（commit 前改回空字串）
+var SERVICE_URL = 'https://gov-subsidy-450277428146.asia-east1.run.app';
+// 現場通關碼：true＝第一次在這台電腦打開要輸入一次（記在這台電腦），每個請求帶 X-Store-Code 標頭；
+// false＝不問、不帶（雲端服務那邊的檢查也要一起拿掉）
+var 需要通關碼 = true;
 </script>
 <!--
-  學員手機報名資料表（一題一畫面；第一步拍身分證，身分證上有的資料不再問）
+  現場報名網頁 v4（店裡的電腦接印表機；現場人員帶學員從頭做到尾。平板、手機也能用）
   - 不載任何外部資源：只用系統字型，CSS／JS 全部在這個檔案裡
-  - 填過的答案先存在學員自己的手機（localStorage）；身分證照片、勞保檔存在手機的 IndexedDB，
-    重新打開不用重拍（存不了就請她重拍）；送出成功或按「清除」就從手機刪掉
-  - 按「送出」才把資料 POST 到上面的 APPS_SCRIPT_URL（不設 Content-Type 標頭，避免跨網域預檢）
-  - 資料表文字＝docs/規格_小幫手資料格式.md 第 1 節；送出的 JSON＝第 5-1 節；改題目或標籤要同步改規格
+  - 流程＝docs/規格_現場報名雲端版.md 第 0 節；API＝第 2 節；資料格式＝第 3 節
+  - 資料表文字＝docs/規格_小幫手資料格式.md 第 1 節（v3 原樣）；改題目或標籤要同步改規格
+  - 答案、讀取結果、核對時改的地方存在這台電腦（localStorage）；身分證照片、勞保檔、申請文件 PDF 存在 IndexedDB。
+    重新整理可以接著做；按「下一位學員」「結束」或「重新填寫」才清掉（現場通關碼留著）
+  - 列印站（網址加 #列印站，店裡接印表機的電腦設成書籤）：學員在自己手機上產好文件，現場人員在這裡點她的名字列印。
+    手機、平板的列印頁會叫她去列印站；列印站拿到的 PDF 只放在記憶體，不存進這台電腦
 -->
 <style>
 :root{
@@ -35,6 +41,7 @@ var APPS_SCRIPT_URL = '';
 html{background:var(--bg);-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Heiti TC","Noto Sans TC","Noto Sans CJK TC","Microsoft JhengHei",sans-serif;font-size:22px;line-height:1.5;-webkit-tap-highlight-color:transparent}
 .wrap{max-width:640px;margin:0 auto;padding:0 16px 48px}
+.wrap.wide{max-width:820px}
 button,input,textarea{font:inherit;color:inherit;margin:0}
 button{-webkit-appearance:none;appearance:none;cursor:pointer;touch-action:manipulation}
 h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
@@ -42,6 +49,7 @@ h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
 .lead{font-size:24px;margin:0 0 14px}
 .hint{font-size:22px;color:var(--ink2);margin:0 0 8px}
 .how{font-size:22px;font-weight:700;color:var(--pri-dk);margin:0 0 14px}
+.tm{margin:12px 0 0;padding:8px 12px;border:3px dashed var(--ink2);border-radius:12px;background:var(--warn-bg);font-size:20px;font-weight:800;text-align:center}
 
 /* 上方：上一題＋第幾題 */
 .top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:12px 0 8px}
@@ -65,6 +73,15 @@ h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
 .opt[aria-checked="true"] .mark svg{visibility:visible}
 .opt .t{flex:1;min-width:0}
 .note{display:inline-block;font-size:22px;font-weight:400;color:var(--ink2)}
+.sub2{display:block;margin-top:4px;font-size:20px;font-weight:600;color:var(--ink2)}
+
+/* 梯次：一梯一個大按鈕；不能選的（額滿、已截止）灰底虛線框＋寫原因 */
+.bt .t{display:block}
+.b1{display:block;font-size:26px;font-weight:800}
+.b2{display:block;font-size:22px;font-weight:600}
+.b3{display:block;margin-top:4px;font-size:22px;font-weight:800}
+.opt:disabled{border-style:dashed;border-color:#7a7a7a;background:#e6e6e6;color:#333;-webkit-text-fill-color:#333;opacity:1;cursor:not-allowed}
+.opt:disabled .mark{border-color:#7a7a7a;background:#e6e6e6}
 
 /* 輸入框 */
 .flabel{display:block;font-size:22px;font-weight:800;margin:8px 0}
@@ -72,10 +89,14 @@ h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
 textarea.field{min-height:150px;resize:vertical}
 .field:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--pri)}
 .follow{margin:0 0 6px}
+.code{font-size:36px;letter-spacing:.3em}
 
 /* 提醒框（有粗框和文字，不只靠顏色） */
 .box{margin:14px 0;padding:14px 16px;border:3px solid;border-radius:14px;font-size:22px;font-weight:700;line-height:1.5}
 .box p{margin:0}
+.box p+p,.box ul+p,.box p+ul{margin-top:8px}
+.box ul{margin:0;padding-left:1.3em}
+.box li{margin:4px 0}
 .err{border-color:var(--err);background:var(--err-bg);color:var(--err)}
 .warn{border-color:var(--warn);background:var(--warn-bg);color:var(--ink)}
 .ok{border-color:var(--ok);background:var(--ok-bg);color:var(--ink)}
@@ -91,45 +112,135 @@ textarea.field{min-height:150px;resize:vertical}
 .foot{margin:40px 0 0;text-align:center}
 .linkbtn{min-height:56px;padding:8px 16px;border:0;background:none;color:var(--ink2);font-size:22px;text-decoration:underline}
 
-/* 拍照、上傳：input 藏起來，按大按鈕樣式的 label 打開相機或相簿 */
+/* 拍照、上傳：input 藏起來，按大按鈕樣式的 label 打開相機或選檔 */
 .vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
 .vh:focus-visible+label{outline:4px solid var(--pri-dk);outline-offset:3px}
 .alt{display:block;width:100%;min-height:56px;margin:12px 0 0;padding:12px 8px;border:0;background:none;color:var(--pri-dk);font-size:22px;font-weight:700;text-align:center;text-decoration:underline}
 .thumb{display:block;max-width:100%;max-height:45vh;margin:14px auto;border:3px solid var(--ink2);border-radius:14px}
+.flist{list-style:none;margin:8px 0 0;padding:0}
+.fitem{display:flex;align-items:center;gap:12px;min-height:76px;margin:0 0 12px;padding:6px 8px 6px 10px;border:3px solid var(--line);border-radius:14px}
+.fthumb,.fpdf{flex:none;width:64px;height:64px;border:2px solid var(--ink2);border-radius:8px}
+.fthumb{object-fit:cover}
+.fpdf{display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800}
+.fname{flex:1;min-width:0;font-size:22px;font-weight:600;overflow-wrap:anywhere}
 
-/* 送出頁 */
+/* 確認頁：一題一列，旁邊「改」 */
+.list{list-style:none;margin:8px 0 0;padding:0;border-top:2px solid #b5b5b5}
+.item{display:flex;align-items:flex-start;padding:14px 0;border-bottom:2px solid #b5b5b5}
+.item .txt{flex:1;min-width:0}
+.k{font-size:20px;font-weight:700;color:var(--ink2)}
+.v{font-size:24px;font-weight:600;overflow-wrap:anywhere}
+.edit{flex:none;min-width:80px;min-height:64px;margin-left:12px;padding:0 12px;border:3px solid var(--pri);border-radius:12px;background:#fff;color:var(--pri-dk);font-size:24px;font-weight:800}
+.edit:active{background:var(--pri-bg)}
+.del{border-color:var(--err);color:var(--err)}
+.del:active{background:var(--err-bg)}
+.mini{display:inline-block;max-width:46%;max-height:120px;margin:6px 8px 0 0;border:2px solid var(--ink2);border-radius:8px;vertical-align:top}
 .chk{margin-top:24px}
+
+/* 等候 */
+.spin{width:72px;height:72px;margin:24px auto;border:8px solid var(--pri-bg);border-top-color:var(--pri);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:4s}}
+
+/* 核對頁（現場人員用：比學員畫面密一點，字還是大） */
+.st{font-size:26px;font-weight:800;margin:36px 0 10px;padding-bottom:6px;border-bottom:3px solid var(--ink2)}
+.st2{font-size:22px;font-weight:800;margin:18px 0 4px}
+.vt{font-size:28px;font-weight:800}
+.facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;margin:12px 0;font-size:22px}
+.facts dt{font-weight:800}
+.facts dd{margin:0}
+.card{margin:12px 0;padding:10px 14px;border:3px solid var(--line);border-radius:14px}
+.card.bad{border-color:var(--err);box-shadow:0 0 0 2px var(--err)}
+.ch{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:22px;font-weight:700}
+.cn{font-size:24px;font-weight:800}
+.tag{display:inline-block;padding:0 8px;border:2px solid;border-radius:8px;font-size:19px;font-weight:800;line-height:1.5;white-space:nowrap}
+.tbad{color:var(--err);border-color:var(--err);background:var(--err-bg)}
+.tok{color:var(--ok);border-color:var(--ok)}
+.tuc{color:var(--warn);border-color:var(--warn);border-style:dashed;background:var(--warn-bg)}
+.tchg{color:var(--pri-dk);border-color:var(--pri-dk)}
+.tneed{color:var(--err);border-color:var(--err)}
+.tchg,.tneed{display:none}
+.chg .tchg,.need .tneed{display:inline-block}
+.fl{display:grid;grid-template-columns:4.6em minmax(0,1fr);align-items:center;gap:4px 10px;margin:10px 0}
+.fk{font-size:20px;font-weight:800}
+.fv{font-size:22px;font-weight:600;overflow-wrap:anywhere}
+.inp{display:block;width:100%;min-height:56px;padding:8px 12px;border:3px solid var(--ink2);border-radius:12px;background:#fff;color:var(--ink);font-size:22px;line-height:1.4;-webkit-appearance:none;appearance:none}
+textarea.inp{resize:vertical}
+.inp:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--pri)}
+.uc .inp{border-style:dashed;border-color:var(--warn);background:var(--warn-bg)}
+.need .inp{border-color:var(--err)}
+.ferr .inp{border-color:var(--err);box-shadow:0 0 0 3px var(--err)}
+.tags,.ftxt{grid-column:2}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.ftxt{margin:0;font-size:20px;font-weight:800;color:var(--err)}
+.two{display:grid;grid-template-columns:minmax(0,1fr);gap:0 18px}
+@media (min-width:600px){.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.idth{display:flex;gap:12px;margin:8px 0}
+.idth figure{flex:1;min-width:0;margin:0}
+.idth img{display:block;max-width:100%;max-height:170px;border:2px solid var(--ink2);border-radius:8px}
+.idth figcaption{font-size:20px;font-weight:700}
+.chain{margin:6px 0;padding-left:1.3em;font-size:22px}
+.chain li{margin:6px 0}
+
+/* 列印頁 */
+.plist{margin:6px 0;padding-left:1.4em;font-size:22px;font-weight:600}
+.plist li{margin:6px 0}
+.pframe{position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;opacity:0;pointer-events:none}
+.go{border-width:5px;border-color:var(--pri);background:var(--pri-bg);color:var(--ink);font-size:28px;font-weight:800;line-height:1.45}
+.btn.sm{min-height:64px;font-size:22px}
+
+/* 列印站（店裡的電腦）：一位一列，時間、姓名、梯次＋兩個大按鈕 */
+.sbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.sbar .hint{margin:0}
+.sbar .btn{width:auto;margin:0;padding:8px 28px}
+.slist{list-style:none;margin:16px 0 0;padding:0}
+.srow{margin:0 0 20px;padding:12px 16px 20px;border:3px solid var(--line);border-radius:14px}
+.shead{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;margin:0}
+.stime{font-size:24px;font-weight:800}
+.sname{font-size:34px;font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+.smeta{font-size:22px;font-weight:700}
+.sbtns{display:grid;grid-template-columns:minmax(0,1fr);gap:0 20px;align-items:end}
+@media (min-width:700px){.sbtns{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.snote{margin:16px 0 0;font-size:20px;font-weight:800}
+.sfall{margin:14px 0 0;font-size:22px;font-weight:700}
+.sfall a{display:inline-block;min-height:44px;padding:6px 10px;color:var(--pri-dk)}
 </style>
 </head>
 <body>
 <main id="app" class="wrap"></main>
-<noscript><p style="font-size:24px;padding:16px">這個表單需要開啟 JavaScript。請用 LINE 或手機的瀏覽器打開。</p></noscript>
+<noscript><p style="font-size:24px;padding:16px">這個表單需要開啟 JavaScript。請用 Chrome、Edge 或 Safari 打開。</p></noscript>
 <script>
 (function () {
   'use strict';
 
-  var STORE_KEY = 'gov_subsidy.women_ai_form.v3';   // v3：先拍身分證、題目順序改了，舊版存的答案不接著用
-  var OLD_KEYS = ['gov_subsidy.women_ai_form.v1', 'gov_subsidy.women_ai_form.v2'];   // 舊版存的答案：打開就清掉
-  var DB_NAME = 'gov_subsidy.women_ai_form', DB_STORE = 'files';   // IndexedDB：照片、勞保檔
-  var HEADER = '【自主訓練報名資料表 v3】';
+  var STORE_KEY = 'gov_subsidy.women_ai_form.v4';   // v4：現場版（勞保多檔、梯次、核對、列印），舊版存的答案不接著用
+  var OLD_KEYS = ['gov_subsidy.women_ai_form.v1', 'gov_subsidy.women_ai_form.v2', 'gov_subsidy.women_ai_form.v3'];   // 打開就清掉
+  var DB_NAME = 'gov_subsidy.women_ai_form', DB_STORE = 'files';   // IndexedDB：照片、勞保檔、申請文件
+  var HEADER = '【自主訓練報名資料表 v3】';          // 資料表文字沿用 v3（規格第 1 節），不改
   var EMPTY = '（未填）';
-  var API_URL = typeof APPS_SCRIPT_URL === 'string' ? APPS_SCRIPT_URL.trim() : '';
+  var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
   var GUARD_MS = 400;    // 換畫面後這段時間內的點擊不算（防連點點到下一題）
-  var SEND_MS = 60000;   // 送出最多等 60 秒（勞保 PDF 大、網路慢時要多一點時間），超過就當沒送成功
-  var MAX_EDGE = 1600, JPEG_Q = 0.8;    // 照片縮到長邊 1600px、JPEG 品質 0.8
-  var MAX_BYTES = 10 * 1024 * 1024;     // 勞保資料最大 10MB
+  var WAIT_MS = { batches: 45000, read: 120000, gen: 240000, recent: 45000, packet: 90000 };   // 讀梯次、讀取資料、產生申請文件、列印站的名單和文件最多等多久，超過當沒成功
+  var MAX_EDGE = 1600, JPEG_Q = 0.8;    // 身分證照片：長邊 1600px、JPEG 0.8（v3 原樣）
+  var DOC_EDGE = 2400, DOC_Q = 0.85;    // 勞保照片、截圖：長邊 2400px、JPEG 0.85（小字要看得清楚）
+  var MAX_BYTES = 10 * 1024 * 1024;     // 每個檔最大 10MB
+  var MAX_DOCS = 5;                     // 勞保資料最多 5 個
+  var MAX_TOTAL = 20 * 1024 * 1024;     // 勞保加起來最多 20MB（整個請求要在約 30MB 內）
+  var UA = navigator.userAgent || '';
+  // 平板、手機（iPad 的 Safari 自稱 Mac，用觸控點數認）：拍照開相機；列印用新分頁打開 PDF。其他＝電腦
+  var TOUCH = /iPad|iPhone|iPod|Android/i.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
   var CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 12.5l5 5L19.5 7" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   // ---------- 題目 ----------
-  // out＝輸出標籤（照規格第 1 節，不可改字）；沒有 out 的（拍照、上傳）不進資料表文字
-  // 選項：t＝畫面上的字；n＝畫面上的括號補充（不輸出）；o＝輸出用字（沒寫就用 t）；
+  // out＝輸出標籤（照規格第 1 節，不可改字；確認頁也用它當名稱）；沒有 out 的（拍照、勞保、梯次）不進資料表文字
+  // 選項：t＝畫面上的字；n＝畫面上的括號補充（不輸出）；o＝輸出用字（沒寫就用 t）；show＝確認頁用字；
   //       ex＝選了就清掉其他選項；f＝選了要接著填（type text／note）
   function other() { return { t: '其他', f: { type: 'text', label: '請寫一下是什麼' } }; }
   var UNION = { type: 'text', label: '叫什麼名字？', hint: '不知道可以不填' };
 
   var QS = [
-    // 拍照：檔案存在學員手機的 IndexedDB；fileKind＝送出時的「種類」
+    // 拍照：檔案存在這台電腦的 IndexedDB；fileKind＝送出時的「種類」
     { id: 'idFront', type: 'photo', fileKind: '身分證正面', title: '拍身分證正面', hint: '有大頭照的那一面' },
     { id: 'idBack', type: 'photo', fileKind: '身分證反面', title: '拍身分證反面', hint: '有地址的那一面' },
     { id: 'name', type: 'text', req: true, ac: 'name', out: '姓名',
@@ -138,10 +249,10 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
       title: '你的手機號碼', hint: '10 個數字，09 開頭' },
     { id: 'email', type: 'text', kind: 'email', out: 'Email',
       title: '你的 Email 信箱', hint: '沒有的話可以不填' },
-    // 戶籍地址不問：小幫手從身分證背面讀（規格 v3）
+    // 戶籍地址不問：從身分證背面讀（規格 v3）
     { id: 'live', type: 'single', out: '通訊地址',
       title: '現在住的地址跟身分證上一樣嗎？', opts: [
-        { t: '一樣', o: '同身分證地址' },
+        { t: '一樣', o: '同身分證地址', show: '跟身分證上一樣' },
         { t: '不一樣', f: { type: 'text', lines: true, req: true, raw: true, label: '請寫你現在住的地址', hint: '從縣市寫到幾號幾樓' } }
       ] },
     { id: 'edu', type: 'single', out: '最高學歷',
@@ -219,24 +330,37 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
       title: '回去上班，最大的困難是？', opts: ['年齡', '太久沒工作', '手機電腦不熟', '缺乏新技能', '要照顧家人', '交通不方便', other()] },
     { id: 'note', type: 'text', lines: true, out: '其他補充',
       title: '還有什麼想補充的嗎？', hint: '沒有的話可以不填' },
-    // 上傳（選填，維持在最後）：檔案也存在手機的 IndexedDB
-    { id: 'labor', type: 'doc', fileKind: '勞保資料', title: '上傳勞保資料', hint: '沒有或不會傳，按「跳過」就好' }
+    // 勞保資料（v4 必填、1–5 個，PDF 原檔、照片截圖縮小）：檔案存在這台電腦的 IndexedDB
+    { id: 'labor', type: 'docs', fileKind: '勞保資料', title: '上傳勞保資料',
+      hint: '要「勞保(就保、災保)異動查詢」那一頁，只有總覽不夠' },
+    // 選梯次（v4）：到這一題才問雲端服務哪幾梯還能報
+    { id: 'batch', type: 'batch', short: '上課梯次', title: '選上課梯次', hint: '只能選「開放報名」的梯次' }
   ];
 
-  var N = QS.length;      // 36 題（身分證正面、反面＋33 題＋勞保資料）
-  var SUBMIT = N + 1;     // 送出頁
-  var DONE = N + 2;       // 送出成功
+  var N = QS.length;      // 37 題（身分證正面、反面＋33 題＋勞保資料＋梯次）
+  var SUBMIT = N + 1;     // 確認頁
+  var REVIEW = N + 2;     // 核對頁（現場人員）
+  var PRINT = N + 3;      // 列印頁
 
   QS.forEach(function (q) {
     if (q.opts) q.opts = q.opts.map(function (o) { return typeof o === 'string' ? { t: o } : o; });
   });
 
+  // 測試模式（SERVICE_URL 空的）用的範例梯次
+  var SAMPLE_BATCHES = [
+    { '梯次': '115/11/18（三）', '開課日': '115/11/18', '星期': '三', '上課時間': '09:00–18:00',
+      '上課地點': '（範例地點）', '辦訓單位': '（範例辦訓單位）', '剩餘': 7, '狀態': '開放報名' },
+    { '梯次': '115/12/16（三）', '開課日': '115/12/16', '星期': '三', '上課時間': '09:00–18:00',
+      '上課地點': '（範例地點）', '辦訓單位': '（範例辦訓單位）', '剩餘': 0, '狀態': '額滿' }
+  ];
+
   // ---------- 小工具 ----------
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+  function escBr(s) { return esc(s).replace(/\n/g, '<br>'); }
   function str(s) { return s == null ? '' : String(s); }
-  // 全形英數→半形（手機號碼、Email 用）
+  // 全形英數→半形（手機號碼、Email、日期用）
   function half(s) {
     return str(s).replace(/[\uFF01-\uFF5E]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }).replace(/\u3000/g, ' ');
   }
@@ -244,6 +368,16 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
   function clean(s) { return str(s).replace(/[\r\n\u2028\u2029]+/g, ' ').replace(/[ \t\u3000]+/g, ' ').replace(/^ +| +$/g, ''); }
   function normPhone(s) { return half(s).replace(/[\s\-\u2010-\u2015\u2212]/g, ''); }
   function normEmail(s) { return half(s).replace(/\s+/g, ''); }
+  function normId(s) { return half(s).replace(/\s+/g, '').toUpperCase(); }
+  function digits(s) { return half(s).replace(/\D+/g, ''); }
+  // 民國日期整理成 YYY/MM/DD：「55/3/12」「110.3.1」「1100301」都認得；看不懂回 null，空的回 ''
+  function normDate(s) {
+    var t = half(s).replace(/\s+/g, '');
+    if (!t) return '';
+    var m = t.match(/^(\d{2,3})\D+(\d{1,2})\D+(\d{1,2})\D*$/) || t.match(/^(\d{2,3})(\d{2})(\d{2})$/);
+    if (!m || +m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > 31) return null;
+    return ('00' + Number(m[1])).slice(-3) + '/' + pad(+m[2]) + '/' + pad(+m[3]);
+  }
   var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
@@ -254,6 +388,9 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
       pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds()) + '+08:00';
   }
   function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+  function arr(v) { return isArr(v) ? v : []; }
+  function obj(v) { return v && typeof v === 'object' && !isArr(v) ? v : {}; }
+  function kb(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
 
   function qById(id) {
     for (var i = 0; i < QS.length; i++) if (QS[i].id === id) return QS[i];
@@ -273,9 +410,15 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
   function followText(q) { return clean(state.a[q.id + '_t']); }
   function showT(o) { return o.t + (o.n ? '（' + o.n + '）' : ''); }
   function outT(o) { return o.o || o.t; }
+  function nameOf() { return textOf(qById('name')); }
 
-  // ---------- 答案存在學員自己的手機（壞掉也照常填） ----------
-  function fresh() { return { v: 3, pos: 0, sent: false, had: {}, a: {} }; }
+  // ---------- 這位學員的進度存在這台電腦（壞掉也照常填） ----------
+  // pos＝畫面；back＝改完要回去的畫面；docs＝勞保檔清單；batch＝選的梯次；
+  // rid、sheet、read、fix＝讀取後的編號、送出的資料表、讀取結果、核對時改的；out＝產生好的申請文件資訊；wait＝等雲端服務時關掉的是哪一步；
+  // pend＝讀取失敗但資料已經存進試算表的編號（再按一次要帶著，雲端服務才不會多存一列）
+  function fresh() {
+    return { v: 4, pos: 0, back: 0, had: {}, a: {}, docs: [], batch: null, rid: 0, sheet: '', read: null, fix: null, out: null, wait: '', pend: 0 };
+  }
   function sanitize(d) {
     var s = fresh();
     if (!d || typeof d !== 'object' || !d.a || typeof d.a !== 'object') return s;
@@ -285,18 +428,28 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
         if (typeof v === 'string') s.a[q.id] = v;
       } else if (q.type === 'single') {
         if (typeof v === 'string' && optByT(q, v)) s.a[q.id] = v;
-      } else if (isArr(v)) {
-        var arr = v.filter(function (x) { return typeof x === 'string' && optByT(q, x); });
-        s.a[q.id] = q.max ? arr.slice(0, q.max) : arr;
+      } else if (q.type === 'multi' && isArr(v)) {
+        var a = v.filter(function (x) { return typeof x === 'string' && optByT(q, x); });
+        s.a[q.id] = q.max ? a.slice(0, q.max) : a;
       }
       var t = d.a[q.id + '_t'];
       if (typeof t === 'string') s.a[q.id + '_t'] = t;
-      if (d.had && d.had[q.id] === true) s.had[q.id] = true;   // 拍過照、選過檔（檔案本身沒存）
+      if (d.had && d.had[q.id] === true) s.had[q.id] = true;   // 拍過照（照片本身在 IndexedDB）
     });
-    var p = Number(d.pos);
-    if (p >= 0 && p <= SUBMIT && Math.floor(p) === p) s.pos = p;
-    s.sent = d.sent === true;
-    if (s.sent) s.pos = DONE;
+    s.docs = arr(d.docs).filter(function (x) { return x && /^doc_[a-z0-9]+_\d+$/.test(str(x.k)) && typeof x.mime === 'string'; })
+      .slice(0, MAX_DOCS).map(function (x) { return { k: x.k, label: str(x.label), mime: x.mime, size: Number(x.size) || 0 }; });
+    if (d.batch && typeof d.batch === 'object' && typeof d.batch['梯次'] === 'string') s.batch = d.batch;
+    var p = Number(d.pos), b = Number(d.back);
+    if (p >= 0 && p <= PRINT && Math.floor(p) === p) s.pos = p;
+    if (b >= 1 && b <= REVIEW && Math.floor(b) === b) s.back = b;
+    if (s.pos >= REVIEW) {   // 核對頁、列印頁要有讀取結果，沒有就回確認頁
+      if (Number(d.rid) > 0 && d.read && typeof d.read === 'object' && d.fix && typeof d.fix === 'object') {
+        s.rid = Number(d.rid); s.read = d.read; s.fix = fixShape(d.fix); s.sheet = str(d.sheet);
+      } else s.pos = SUBMIT;
+    }
+    if (s.pos === PRINT) { if (d.out && typeof d.out === 'object') s.out = d.out; else s.pos = REVIEW; }
+    if (d.wait === 'read' || d.wait === 'gen') s.wait = d.wait;
+    if (Number(d.pend) > 0 && s.pos <= SUBMIT) s.pend = Number(d.pend);
     return s;
   }
   function load() {
@@ -308,10 +461,10 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
   function save() { try { window.localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* 存不了也照常填 */ } }
   function wipe() { try { window.localStorage.removeItem(STORE_KEY); } catch (e) { /* 同上 */ } idbClear(); }
 
-  // ---------- 照片、勞保檔存在手機的 IndexedDB（存不了：下次打開請她重拍，表單照常填） ----------
-  // 存 ArrayBuffer 不存 Blob：有些 App 內建的瀏覽器把 Blob 存進 IndexedDB 會失敗
-  var idb = null, idbWait = null;   // idb：開好的資料庫（false＝這支手機不能用）；idbWait：還在開的時候排隊的動作
-  var saveNo = 0, saving = {};      // 每題最後一次存檔的號碼：舊的還沒寫完就換了照片或清掉了，舊的就不寫
+  // ---------- 照片、勞保檔、申請文件存在 IndexedDB（存不了：重新打開時請她重拍、重選、重新產生） ----------
+  // 存 ArrayBuffer 不存 Blob：有些瀏覽器把 Blob 存進 IndexedDB 會失敗
+  var idb = null, idbWait = null;   // idb：開好的資料庫（false＝這台不能用）；idbWait：還在開的時候排隊的動作
+  var saveNo = 0, saving = {};      // 每個檔最後一次存檔的號碼：舊的還沒寫完就換了或清掉了，舊的就不寫
 
   function useDB(fn) {
     if (idb !== null) { fn(idb || null); return; }
@@ -339,7 +492,7 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
       var rec = { buf: r.result, mime: f.mime, name: f.name, label: f.label };
       useDB(function (d) {
         if (!d || saving[id] !== n) return;
-        try { store(d, 'readwrite').put(rec, id); } catch (e) { /* 存不了：下次打開請她重拍 */ }
+        try { store(d, 'readwrite').put(rec, id); } catch (e) { /* 存不了：重新打開時請她重拍 */ }
       });
     };
     try { r.readAsArrayBuffer(f.blob); } catch (e) { /* 同上 */ }
@@ -353,12 +506,24 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     useDB(function (d) { if (d) { try { store(d, 'readwrite').clear(); } catch (e) { /* 略過 */ } } });
   }
 
-  // 打開網頁時，把拍過、選過的檔案從手機拿回來；最多等 1.5 秒，拿不到就當沒存到（請她重拍）
+  // 打開網頁時，把照片、勞保檔（列印頁再加申請文件）從 IndexedDB 拿回來；最多等 3 秒，拿不到就當沒存到
   function restoreFiles(done) {
-    var ids = QS.filter(function (q) { return q.fileKind && state.had[q.id]; }).map(function (q) { return q.id; });
-    if (!ids.length) { done(); return; }
-    var over = false, timer = setTimeout(finish, 1500);
-    function finish() { if (!over) { over = true; clearTimeout(timer); done(); } }
+    var ids = QS.filter(function (q) { return q.type === 'photo' && state.had[q.id]; }).map(function (q) { return q.id; });
+    state.docs.forEach(function (x) { ids.push(x.k); });
+    if (state.pos === PRINT) ids.push('pdf_print', 'pdf_env');
+    var over = false, timer = setTimeout(finish, 3000);
+    function finish() {
+      if (over) return;
+      over = true;
+      clearTimeout(timer);
+      var before = state.docs.length;
+      state.docs = state.docs.filter(function (x) { return files[x.k]; });
+      docsLost = before - state.docs.length;
+      if (state.pos === PRINT && !files.pdf_print) { state.pos = REVIEW; pdfLost = true; }
+      save();
+      done();
+    }
+    if (!ids.length) { finish(); return; }
     useDB(function (d) {
       if (!d || over) { finish(); return; }
       try {
@@ -370,7 +535,8 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
             var v = got[id];
             if (!v || !v.buf || !v.buf.byteLength || !v.mime) return;
             var blob = new Blob([v.buf], { type: v.mime });
-            files[id] = { blob: blob, mime: v.mime, name: v.name, label: v.label, url: /^image\//.test(v.mime) ? URL.createObjectURL(blob) : '' };
+            files[id] = { blob: blob, mime: v.mime, name: v.name, label: v.label,
+              url: /^image\//.test(v.mime) || /^pdf_/.test(id) ? URL.createObjectURL(blob) : '' };
           });
           finish();
         };
@@ -379,7 +545,7 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     });
   }
 
-  // ---------- 輸出文字（規格第 1 節） ----------
+  // ---------- 輸出文字（規格第 1 節，v3 原樣） ----------
   function outValue(q) {
     if (q.type === 'text') return textOf(q) || EMPTY;
     if (q.type === 'single') {
@@ -408,12 +574,53 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     return lines.join('\n');
   }
 
+  // 確認頁上顯示的答案（用畫面上的白話）
+  function showHTML(q) {
+    if (q.type === 'photo') {
+      var f = files[q.id];
+      return f && f.url ? '<img class="mini" src="' + esc(f.url) + '" alt="' + esc(q.fileKind) + '的照片">' : '（還沒拍）';
+    }
+    if (q.type === 'docs') {
+      return state.docs.length ? state.docs.map(function (x, i) { return esc((i + 1) + '. ' + x.label); }).join('<br>') : '（還沒上傳）';
+    }
+    if (q.type === 'batch') return state.batch ? batchLines(state.batch) : '（還沒選）';
+    if (q.type === 'text') return esc(textOf(q) || EMPTY);
+    if (q.type === 'single') {
+      var o = optByT(q, state.a[q.id]);
+      if (!o) return esc(EMPTY);
+      if (o.f && o.f.type === 'text') {
+        var t = followText(q);
+        return esc(o.f.raw ? t || EMPTY : showT(o) + '（' + (t || '未填') + '）');
+      }
+      return esc(o.show || showT(o));
+    }
+    var parts = [];
+    q.opts.forEach(function (o) { if (isSel(q, o)) parts.push(o.f ? showT(o) + '（' + (followText(q) || '未填') + '）' : showT(o)); });
+    return esc(parts.length ? parts.join('、') : EMPTY);
+  }
+  function batchLines(b) {
+    return '<b>' + esc(str(b['梯次']) + ' ' + str(b['上課時間'])) + '</b><br>地點：' + esc(b['上課地點'] || '（未定）') +
+      '<br>辦訓單位：' + esc(b['辦訓單位'] || '（未定）');
+  }
+
   // 回傳錯誤訊息；沒問題回傳空字串
   function check(q) {
-    if (q.type === 'photo' || q.type === 'doc') {
+    if (q.type === 'photo') {
       if (working === q.id) return '照片還在處理，請等一下。';
-      if (q.type === 'photo' && !files[q.id]) return '請按「打開相機拍照」，拍' + q.fileKind + '。';
+      if (!files[q.id]) return '請按「' + (TOUCH ? '打開相機拍照' : '選擇照片檔') + '」，拍' + q.fileKind + '。';
       return '';
+    }
+    if (q.type === 'docs') {
+      if (working === q.id) return '檔案還在處理，請等一下。';
+      if (!state.docs.length) return '勞保資料一定要上傳。\n請按「選擇檔案」。';
+      var total = 0;
+      state.docs.forEach(function (x) { total += x.size; });
+      if (total > MAX_TOTAL) return '檔案加起來太大（超過 20MB）。\n請刪掉幾個，或改用 PDF。';
+      return '';
+    }
+    if (q.type === 'batch') {
+      if (state.batch) return '';
+      return batches && !openCount() ? '目前沒有開放報名的梯次，請聯絡 Tomi。' : '請點一個梯次。';
     }
     if (q.type === 'text') {
       var v = textOf(q);
@@ -435,21 +642,145 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     return '';
   }
 
-  // ---------- 畫面 ----------
+  // ---------- 畫面狀態 ----------
   var app = document.getElementById('app');
   var state = fresh();
-  var view = 'screen';          // 'welcome'＝回來時的歡迎畫面
+  var view = 'screen';          // screen＝一般；welcome＝回來時的歡迎畫面；code＝現場通關碼；wait＝等雲端服務；station＝列印站
   var shownAt = 0, busy = false, followKey = null;
   var confirmChecked = false;
-  var files = {};               // 拍好、選好的檔案（記憶體一份、IndexedDB 一份）：{ blob, mime, name, url, label }
-  var working = '';             // 正在處理照片的題目 id
-  var notice = '';              // 開場頁的一次性提示（清除資料後）
-  var backTo = 0;               // 回去補拍、補選時，補完要回到的題號（0＝照順序往下）
+  var files = {};               // 照片、勞保檔、申請文件（記憶體一份、IndexedDB 一份）：{ blob, mime, name, url, label }
+  var working = '';             // 正在處理檔案的題目 id
+  var notice = '';              // 開場頁的一次性提示
+  var flash = '';               // 核對頁上方的一次性提示
+  var docsLost = 0, pdfLost = false, docSeq = 0;   // 重新打開時沒拿回來的勞保檔個數、申請文件
+  var batches = null, batchErr = '', batchLoading = false, batchGone = '', batchSeq = 0;   // 梯次
+  var waitKind = '', waitTimer = 0, waitStart = 0;
 
   function curQ() { return view === 'screen' && state.pos >= 1 && state.pos <= N ? QS[state.pos - 1] : null; }
 
+  // ---------- 現場通關碼（全部集中在這一段；最上面 需要通關碼 = false 就整個不用） ----------
+  var CODE_ON = typeof 需要通關碼 === 'undefined' ? true : 需要通關碼 !== false;
+  var CODE_KEY = 'gov_subsidy.store_code';   // 記在這台電腦；換學員不清
+  var storeCode = '', codeWhy = 'first', codeBack = 'screen';   // codeWhy：first 第一次／bad 雲端服務說不對／change 自己要換
+
+  function loadCode() { try { storeCode = str(window.localStorage.getItem(CODE_KEY)); } catch (e) { storeCode = ''; } }
+  function saveCode(c) {
+    storeCode = c;
+    try { if (c) window.localStorage.setItem(CODE_KEY, c); else window.localStorage.removeItem(CODE_KEY); } catch (e) { /* 存不了：這次開著還是有用 */ }
+  }
+  function codeMissing() { return CODE_ON && !storeCode; }
+  function codeHeaders(h) { if (CODE_ON) h['X-Store-Code'] = storeCode; return h; }
+  // 雲端服務回 401：通關碼不對（可能換了）→ 到通關碼畫面重新輸入；回傳 true＝處理好了
+  function codeRejected(r) {
+    if (!CODE_ON || r.code !== 'store_code') return false;
+    askCode('bad');
+    return true;
+  }
+  function askCode(why) {
+    if (why === 'bad') saveCode('');
+    codeWhy = why;
+    if (view !== 'code') codeBack = view === 'welcome' || view === 'station' ? view : 'screen';
+    view = 'code';
+    busy = false;
+    render();
+    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
+    var f = document.getElementById('f_code');
+    if (f) { try { f.focus(); } catch (e) { /* 略過 */ } }
+  }
+  function codeHTML() {
+    var h = '<h1>現場通關碼</h1>';
+    if (codeWhy === 'bad') h += '<div class="box err"><p>現場通關碼不對（可能換了）。<br>請聯絡 Tomi 重新輸入。' + (codeBack === 'station' ? '' : '剛剛填的資料都還在。') + '</p></div>';
+    else if (codeWhy === 'change') h += '<p class="lead">請輸入新的現場通關碼。</p>';
+    else h += '<p class="lead">第一次在這台電腦使用，<span class="nw">請輸入現場通關碼。</span></p>' +
+      '<p class="hint">輸入一次就會記在這台電腦，<span class="nw">之後不用再輸入。</span></p>';
+    h += '<label class="flabel" for="f_code">現場通關碼（6 位數字）</label>' +
+      '<input type="text" id="f_code" class="field code" inputmode="numeric" maxlength="6" autocomplete="off" enterkeyhint="done">' +
+      '<div id="msg" role="alert"></div>' +
+      '<button type="button" class="btn" id="codeOk" data-act="codeOk">確定</button>';
+    if (codeWhy === 'change' && storeCode) h += '<button type="button" class="btn btn2" data-act="codeCancel">不換了，回去</button>';
+    return h;
+  }
+  // 按「確定」：有接雲端服務就先讀一次梯次，確認通關碼對不對（連不上就先記下來，選梯次時會再確認）
+  function onCodeOk() {
+    var f = document.getElementById('f_code'), v = half(f ? f.value : '').replace(/\s+/g, '');
+    if (!/^\d{6}$/.test(v)) { showMsg('通關碼是 6 位數字，請再看一下。'); return; }
+    if (!API) { codeDone(v, ''); return; }
+    var old = storeCode, b = document.getElementById('codeOk');
+    busy = true;
+    hideMsg();
+    if (b) b.textContent = '確認中，請稍等…';
+    storeCode = v;
+    api('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
+      busy = false;
+      if (r.code === 'store_code') {
+        storeCode = old;
+        if (b) b.textContent = '確定';
+        showMsg('通關碼不對，請再看一下。');
+        return;
+      }
+      codeDone(v, r.ok ? '' : '還沒辦法確認通關碼對不對（連不上雲端服務），先記下來了。');
+    });
+  }
+  function codeDone(v, warn) {
+    var why = codeWhy, m = why === 'change' ? '通關碼換好了。' : why === 'bad' ? '通關碼更新好了。' : '';
+    saveCode(v);
+    if (codeBack === 'station') { openStation(); if (warn) showMsg(warn, 'warn'); return; }
+    if (why === 'bad' && (state.pos === SUBMIT || state.pos === REVIEW)) m += '\n請再按一次下面的按鈕。';
+    if (warn) m += (m ? '\n' : '') + warn;
+    view = codeBack;
+    if (view !== 'screen' || state.pos === 0) { notice = m; render(); return; }
+    if (state.pos === SUBMIT || state.pos === REVIEW) render();   // 不重設「本人確認」、不捲回最上面
+    else go(state.pos);                                          // 選梯次那一題會重新讀梯次
+    if (m) showMsg(m, warn ? 'warn' : 'ok');
+  }
+
+  // ---------- 呼叫雲端服務 ----------
+  // cb(r)：r.ok＝成功、r.data＝回的 JSON；失敗 r.code＝store_code／bad_input／ai_failed／…（服務的代碼）或 net／timeout／bad_json，
+  //        r.msg＝服務寫的白話、r.status＝HTTP 狀態碼
+  function api(method, path, body, ms, cb) {
+    var ended = false, ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); end({ code: 'timeout' }); }, ms);
+    function end(r) { if (!ended) { ended = true; clearTimeout(timer); cb(r); } }
+    var opt = { method: method, headers: codeHeaders({}), cache: 'no-store', signal: ctrl ? ctrl.signal : undefined };
+    if (body != null) { opt.headers['Content-Type'] = 'application/json'; opt.body = body; }
+    try {
+      fetch(API + path, opt).then(function (res) {
+        return res.text().then(function (t) {
+          var j = null;
+          try { j = JSON.parse(t); } catch (e) { /* 不是 JSON */ }
+          if (res.status === 401) end({ code: 'store_code', status: 401, msg: j ? str(j['錯誤']) : '', data: j });
+          else if (!j || typeof j !== 'object') end({ code: 'bad_json', status: res.status });
+          else if (res.ok && j.ok === true) end({ ok: true, status: res.status, data: j });
+          else end({ code: str(j['代碼']) || 'internal', status: res.status, msg: str(j['錯誤']), data: j });
+        });
+      }).catch(function (e) { end({ code: 'net', msg: String(e) }); });
+    } catch (e) { end({ code: 'net', msg: String(e) }); }
+  }
+
+  // 錯誤 → 給現場人員看的白話（哪一步沒成功、為什麼、怎麼辦）
+  var STEPS = {
+    batches: ['讀取梯次', '請按「重新整理梯次」再試一次。'],
+    read: ['讀取資料', '資料都還在這台電腦上，請再按一次「送出，讀取資料」。'],
+    gen: ['產生申請文件', '資料都還在，請再按一次。'],
+    recent: ['更新名單', '會自動再試，也可以按「重新整理」。'],
+    packet: ['拿文件', '請再按一次。']
+  };
+  function errText(step, r) {
+    var s = STEPS[step], why, more = '\n' + s[1];
+    if (r.code === 'net') why = '連不上雲端服務。\n請看網路（Wi-Fi）有沒有通。';
+    else if (r.code === 'timeout') why = '等太久沒有回應（超過 ' + Math.round(WAIT_MS[step] / 1000) + ' 秒）。';
+    else if (r.code === 'bad_json') why = '雲端服務回的東西看不懂（HTTP ' + r.status + '）。';
+    else if (r.code === 'ai_failed') why = 'AI 暫時讀不到。';
+    else why = r.msg || '雲端服務出錯（' + r.code + '）。';
+    if (r.code === 'bad_input' || r.code === 'config_missing' || r.code === 'store_code') more = '';
+    if (r.code === 'ai_failed' || r.code === 'bad_json' || r.code === 'internal' || r.code === 'sheet_failed') more += '\n一直不行的話，請聯絡 Tomi。';
+    return s[0] + '沒有成功：' + why + more;
+  }
+
+  // ---------- 畫面 ----------
   function topHTML(n) {
-    var h = '<div class="top"><button type="button" class="back" data-act="back">‹ 上一題</button>' +
+    var back = n <= N && state.back >= SUBMIT ? (state.back === REVIEW ? '‹ 回核對頁' : '‹ 回確認頁') : '‹ 上一題';
+    var h = '<div class="top"><button type="button" class="back" data-act="back">' + back + '</button>' +
       '<span class="count">' + (n <= N ? '第 ' + n + ' 題／共 ' + N + ' 題' : '最後一步') + '</span></div>';
     var pct = Math.round(Math.min(n, N) / N * 100);
     return h + '<div class="bar" aria-hidden="true"><span style="width:' + pct + '%"></span></div>';
@@ -474,38 +805,54 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
 
   function introHTML() {
     return '<h1>重返職場 AI 入門班｜<span class="nw">報名資料表</span></h1>' +
-      (notice ? '<div class="box ok" role="status"><p>' + esc(notice) + '</p></div>' : '') +
+      (notice ? '<div class="box ok" role="status"><p>' + escBr(notice) + '</p></div>' : '') +
       '<p class="lead">大約 10 分鐘，<span class="nw">大多用點的。</span></p>' +
       '<p class="lead">請先準備好身分證，<span class="nw">一開始要拍照。</span></p>' +
+      '<p class="lead">也要準備勞保資料<span class="nw">（PDF 或截圖）。</span></p>' +
       '<p class="lead">資料只用在這次補助申請，<span class="nw">申請完就刪除。</span></p>' +
       '<p class="hint">中途離開沒關係，<span class="nw">下次打開可以接著填。</span></p>' +
-      '<button type="button" class="btn" data-act="start">我同意，開始填寫</button>';
+      '<button type="button" class="btn" data-act="start">我同意，開始填寫</button>' +
+      // 列印站只給店裡的電腦：學員自己的手機上不放這顆（點進去會看到別人的名字）；手機、平板要用就開 #列印站 網址
+      (TOUCH ? '' : '<div class="foot"><button type="button" class="btn btn2" data-act="station">列印站（店裡電腦用）</button></div>') +
+      (CODE_ON ? '<div class="foot"><button type="button" class="linkbtn" data-act="code">更換通關碼</button></div>' : '');
   }
 
-  // 拍過、選過，但檔案沒有留在手機裡的題號（from ≤ 題號 < to）；沒有就回傳 0
+  // 拍過、選過，但檔案沒有留在這台電腦的題號（from ≤ 題號 < to）；沒有就回傳 0
+  // 勞保檔只有要回確認頁（還沒讀取）時才要補；讀取過以後只需要身分證照片（產生申請文件要再送一次）
   function lostAt(from, to) {
     for (var p = from; p < to && p <= N; p++) {
       var q = QS[p - 1];
-      if (q.fileKind && state.had[q.id] && !files[q.id]) return p;
+      if (q.type === 'photo' && state.had[q.id] && !files[q.id]) return p;
+      if (q.type === 'docs' && docsLost && to <= SUBMIT) return p;
     }
     return 0;
   }
 
   function welcomeHTML() {
-    var p = state.pos, lost = lostAt(1, p), msg, btn;
+    var p = state.pos, lost = p === PRINT ? 0 : lostAt(1, p), nm = nameOf(), msg, btn;
     if (lost && QS[lost - 1].type === 'photo') {
       msg = ['你填的答案都還在。', '不過照片沒有存到，', '要請你再拍一次。'];
       btn = '重拍身分證';
     } else if (lost) {
-      msg = ['你填的答案都還在。', '不過勞保資料沒有存到，', '要請你再選一次。'];
+      msg = ['你填的答案都還在。', '不過勞保資料有 ' + docsLost + ' 個檔沒有存到，', '要請你再選一次。'];
       btn = '重選勞保資料';
+    } else if (p === PRINT) {
+      msg = ['申請文件已經做好了。'];
+      btn = '回到列印頁';
+    } else if (p === REVIEW) {
+      msg = [pdfLost ? '申請文件沒有存到，要再產生一次。' : state.wait === 'gen' ? '剛剛「產生申請文件」還沒做完就關掉了，要再按一次。' : '資料已經讀好，還沒產生申請文件。'];
+      btn = '回到核對頁';
+    } else if (p === SUBMIT) {
+      msg = [state.wait === 'read' ? '剛剛「送出，讀取資料」還沒做完就關掉了，要再按一次。' : '你上次填到最後一步了。'];
+      btn = '接著填';
     } else {
-      msg = [p > N ? '你上次填到最後一步了。' : '你上次填到第 ' + p + ' 題。'];
-      btn = p > N ? '接著填' : '接著填（第 ' + p + ' 題）';
+      msg = ['你上次填到第 ' + p + ' 題。'];
+      btn = '接著填（第 ' + p + ' 題）';
     }
     // 一小句不拆開換行（長輩讀到一半斷行容易看錯）
     return '<h1>重返職場 AI 入門班｜<span class="nw">報名資料表</span></h1>' +
       '<p class="lead">' + ['歡迎回來！'].concat(msg).map(function (s) { return '<span class="nw">' + esc(s) + '</span>'; }).join('') + '</p>' +
+      (nm ? '<p class="hint">學員：' + esc(nm) + (state.rid ? '（編號 ' + state.rid + '）' : '') + '</p>' : '') +
       '<button type="button" class="btn" data-act="resume">' + esc(btn) + '</button>' + footHTML(true);
   }
 
@@ -516,8 +863,14 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     if (q.type === 'single') h += '<p class="how">點一個答案</p>';
     if (q.type === 'multi') h += '<p class="how">' + (q.max ? '最多選 ' + q.max + ' 個' : '可以選好幾個') + '</p>';
     if (q.type === 'photo' && !files[q.id]) h += '<p class="how">放在深色的桌面上<br>手機拿平，從正上方拍<br>靠近一點，四個角都要拍到<br>字要清楚，不要反光</p>';
-    if (q.type === 'photo' || q.type === 'doc') {
+    if (q.type === 'docs') h += '<p class="how">PDF、截圖、拍照都可以，最多 ' + MAX_DOCS + ' 個</p>';
+    if (q.type === 'batch') h += '<p class="how">點一個梯次</p>';
+    if (q.type === 'photo') {
       h += fileHTML(q);
+    } else if (q.type === 'docs') {
+      h += docsHTML(q);
+    } else if (q.type === 'batch') {
+      h += batchHTML();
     } else if (q.type === 'text') {
       h += fieldHTML(q.id, q, 'qt');
     } else {
@@ -535,67 +888,515 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     return h + footHTML(false);
   }
 
-  // 拍照、上傳題：還沒拍→「打開相機拍照」；拍好→縮圖＋問清不清楚（清楚，下一步／重拍）；手機沒存住→提醒重拍
+  // 拍照題：還沒拍→「打開相機拍照」（電腦：「選擇照片檔」）；拍好→縮圖＋問清不清楚；沒存住→提醒重拍
   function fileHTML(q) {
-    var id = q.id, f = files[id], photo = q.type === 'photo', h = '';
+    var id = q.id, f = files[id], h = '';
     if (working === id) return '<div class="box warn" role="status"><p>照片處理中，請稍等…</p></div>';
-    if (!f && state.had[id]) {
-      h += '<div class="box warn"><p>' + (photo ? '剛剛拍的照片沒有存到，請再拍一次。'
-        : '剛剛選的檔案沒有存到，請再選一次，或按「跳過」。') + '</p></div>';
-    }
+    if (!f && state.had[id]) h += '<div class="box warn"><p>剛剛拍的照片沒有存到，請再拍一次。</p></div>';
     if (f && f.url) h += '<img class="thumb" src="' + esc(f.url) + '" alt="' + esc(q.fileKind) + '的照片">';
-    if (photo) {
-      if (f) h += '<p class="lead"><strong>字清楚、四個角都有拍到嗎？</strong></p>' +
-        '<button type="button" class="btn" id="next" data-act="next">清楚，下一步</button>';
-      h += '<input type="file" id="cam_' + id + '" class="vh" accept="image/*" capture="environment" data-file="' + id + '">' +
-        '<label for="cam_' + id + '"' + (f ? ' id="retake" class="btn btn2">重拍' : ' class="btn">打開相機拍照') + '</label>' +
-        '<input type="file" id="pick_' + id + '" class="vh" accept="image/*" data-file="' + id + '">' +
-        '<label for="pick_' + id + '" class="alt">或從相簿選照片</label>';
+    if (f) h += '<p class="lead"><strong>字清楚、四個角都有拍到嗎？</strong></p>' +
+      '<button type="button" class="btn" id="next" data-act="next">' + esc(nextLabel(q)) + '</button>';
+    h += '<input type="file" id="cam_' + id + '" class="vh" accept="image/*"' + (TOUCH ? ' capture="environment"' : '') + ' data-file="' + id + '">' +
+      '<label for="cam_' + id + '"' + (f ? ' id="retake" class="btn btn2">' + (TOUCH ? '重拍' : '換一張照片')
+                                          : ' class="btn">' + (TOUCH ? '打開相機拍照' : '選擇照片檔')) + '</label>';
+    if (TOUCH) h += '<input type="file" id="pick_' + id + '" class="vh" accept="image/*" data-file="' + id + '">' +
+      '<label for="pick_' + id + '" class="alt">或從相簿選照片</label>';
+    return h;
+  }
+
+  // 勞保資料：選好的檔一個一列（可刪），最多 5 個
+  function docsHTML(q) {
+    var h = '', n = state.docs.length;
+    if (docsLost) h += '<div class="box warn"><p>有 ' + docsLost + ' 個檔案沒有存到，請再選一次。</p></div>';
+    if (n) {
+      h += '<ol class="flist">';
+      state.docs.forEach(function (x, i) {
+        var f = files[x.k];
+        h += '<li class="fitem">' + (f && f.url ? '<img class="fthumb" src="' + esc(f.url) + '" alt="">' : '<span class="fpdf" aria-hidden="true">PDF</span>') +
+          '<span class="fname">' + esc(x.label) + '</span>' +
+          '<button type="button" class="edit del" data-act="undoc" data-k="' + esc(x.k) + '" aria-label="刪除第 ' + (i + 1) + ' 個檔案">刪除</button></li>';
+      });
+      h += '</ol>';
+    }
+    if (working === q.id) return h + '<div class="box warn" role="status"><p>檔案處理中，請稍等…</p></div>';
+    if (n < MAX_DOCS) {
+      h += '<input type="file" id="pick_' + q.id + '" class="vh" accept="application/pdf,.pdf,image/*" multiple data-file="' + q.id + '">' +
+        '<label for="pick_' + q.id + '" class="btn' + (n ? ' btn2' : '') + '">' + (n ? '再加一個檔案' : '選擇檔案（PDF 或照片）') + '</label>';
     } else {
-      if (f) h += '<div class="box ok"><p>選好了：' + esc(f.label) + '</p></div>';
-      h += '<input type="file" id="pick_' + id + '" class="vh" accept="application/pdf,.pdf,image/*" data-file="' + id + '">' +
-        '<label for="pick_' + id + '" class="btn' + (f ? ' btn2' : '') + '">' + (f ? '換一個檔案' : '選擇檔案（PDF 或照片）') + '</label>';
-      if (f) h += '<button type="button" class="alt" data-act="unfile">不要上傳這個檔案</button>';
+      h += '<p class="hint">已經 ' + MAX_DOCS + ' 個了。要換的話，先刪除一個。</p>';
     }
     return h;
   }
 
+  // 梯次：一梯一個大按鈕；只有「開放報名」能點
+  function openCount() {
+    var n = 0;
+    arr(batches).forEach(function (b) { if (b['狀態'] === '開放報名') n++; });
+    return n;
+  }
+  function batchHTML() {
+    if (batchErr) return '<div class="box err"><p>' + escBr(batchErr) + '</p></div>' +
+      '<button type="button" class="btn btn2" data-act="reloadBatches">重新整理梯次</button>';
+    if (batchLoading || !batches) return '<div class="box warn" role="status"><p>正在讀取梯次，請稍等…</p></div>';
+    var h = '';
+    if (!API) h += '<p class="hint">（測試模式：下面是範例梯次）</p>';
+    if (batchGone) h += '<div class="box warn"><p>原本選的 ' + esc(batchGone) + ' 不能報名了，請重選。</p></div>';
+    if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的梯次，<span class="nw">請聯絡 Tomi。</span></p></div>';
+    h += '<div class="opts" role="radiogroup" aria-labelledby="qt">';
+    batches.forEach(function (b, i) {
+      var ok = b['狀態'] === '開放報名', on = ok && !!state.batch && state.batch['梯次'] === b['梯次'];
+      var left = typeof b['剩餘'] === 'number' ? '還剩 ' + b['剩餘'] + ' 位' : '可以報名';
+      var say = str(b['梯次']) + ' ' + str(b['上課時間']) + '，' + (ok ? left : (b['狀態'] || '不能報名') + '，不能選');
+      h += '<button type="button" class="opt bt" data-act="batch" data-i="' + i + '" role="radio" aria-label="' + esc(say) + '" aria-checked="' + (on ? 'true' : 'false') + '"' + (ok ? '' : ' disabled') + '>' +
+        '<span class="mark">' + CHECK + '</span><span class="t">' +
+        '<span class="b1">' + esc(str(b['梯次']) + ' ' + str(b['上課時間'])) + '</span>' +
+        '<span class="b2">地點：' + esc(b['上課地點'] || '（未定）') + '</span>' +
+        '<span class="b2">辦訓單位：' + esc(b['辦訓單位'] || '（未定）') + '</span>' +
+        '<span class="b3">' + (ok ? esc(left) : esc(b['狀態'] || '不能報名') + '，不能選') + '</span></span></button>';
+    });
+    return h + '</div><button type="button" class="alt" data-act="reloadBatches">重新整理梯次</button>';
+  }
+
   function submitHTML() {
     var h = topHTML(SUBMIT);
-    h += '<h2 class="qt" id="qt" tabindex="-1">送出資料</h2>';
-    h += '<button type="button" class="opt chk" id="chk" data-act="chk" role="checkbox" aria-label="我確認以上都是真的" aria-checked="' + (confirmChecked ? 'true' : 'false') + '">' +
-      '<span class="mark">' + CHECK + '</span><span class="t">我確認以上都是真的</span></button>';
+    h += '<h2 class="qt" id="qt" tabindex="-1">確認資料</h2>';
+    h += '<p class="hint">請和學員一起看一遍。<span class="nw">要改的話，按旁邊的「改」。</span></p>';
+    h += '<ol class="list">';
+    QS.forEach(function (q, i) {
+      var k = q.out || q.short || q.fileKind;
+      h += '<li class="item"><div class="txt"><div class="k">' + esc(k) + '</div><div class="v">' + showHTML(q) + '</div></div>' +
+        '<button type="button" class="edit" data-act="edit" data-q="' + (i + 1) + '" aria-label="改' + esc(k) + '">改</button></li>';
+    });
+    h += '</ol>';
+    h += '<button type="button" class="opt chk" id="chk" data-act="chk" role="checkbox" aria-label="本人確認：以上都是真的。這些資料只用在這次補助申請，由 AI 協助整理成申請文件。" aria-checked="' + (confirmChecked ? 'true' : 'false') + '">' +
+      '<span class="mark">' + CHECK + '</span><span class="t">本人確認：以上都是真的' +
+      '<span class="sub2">這些資料只用在這次補助申請，由 AI 協助整理成申請文件。</span></span></button>';
     h += '<div id="msg" role="alert"></div>';
-    h += '<button type="button" class="btn" id="send" data-act="send" aria-disabled="' + (confirmChecked ? 'false' : 'true') + '">送出</button>';
+    h += '<button type="button" class="btn" id="send" data-act="send" aria-disabled="' + (confirmChecked ? 'false' : 'true') + '">送出，讀取資料</button>';
     return h + footHTML(false);
   }
 
-  function doneHTML() {
-    return '<h1>送出成功！</h1>' +
-      '<div class="box ok" role="status"><p>老師已經收到你的資料。</p></div>' +
-      '<p class="lead">勞保資料還沒傳的話，<span class="nw">記得用 LINE 傳給老師。</span></p>' +
-      '<p class="hint">如果是借別人的手機或平板填的，請按下面的按鈕。</p>' +
-      '<button type="button" class="btn" data-act="wipe">清除這支手機上的資料</button>';
+  function waitHTML() {
+    var t = waitKind === 'read' ? ['正在讀身分證和勞保資料', '大約 30 秒，請稍等。'] : ['正在寫計畫書、排版', '大約 1 分鐘，請稍等。'];
+    return '<h1>' + t[0] + '</h1><div class="spin" aria-hidden="true"></div>' +
+      '<p class="lead" role="status">' + t[1] + '</p><p class="hint" id="waited">已經等了 0 秒</p>' +
+      '<p class="hint">請不要關掉這個畫面，<span class="nw">也不要重新整理。</span></p>';
   }
 
+  // ---------- 核對頁（現場人員拿學員的身分證、勞保資料對照；規格 0-8、3-1～3-4） ----------
+  function R() { return obj(state.read); }
+  function J() { return obj(R()['判讀']); }
+  function IDC() { return obj(R()['身分證']); }
+  function LB() { return obj(R()['勞保']); }
+  function fixShape(f) {
+    f['勞保'] = obj(f['勞保']);
+    f['勞保']['表頭'] = obj(f['勞保']['表頭']);
+    f['勞保']['明細'] = arr(f['勞保']['明細']).map(obj);
+    f['工作經歷職稱'] = arr(f['工作經歷職稱']).map(str);
+    return f;
+  }
+  // 讀取結果 → 可以改的那一份（3-4 的格式）
+  function makeFix(rd) {
+    var id = obj(rd['身分證']), j = obj(rd['判讀']);
+    return fixShape({ '姓名': str(id['姓名']), '身分證字號': str(id['身分證字號']), '出生日期': str(id['出生日期']), '戶籍地址': str(id['戶籍地址']),
+      '通訊地址': str(j['通訊地址']), '郵遞區號': str(j['郵遞區號']),
+      '工作經歷職稱': arr(j['工作經歷']).map(function (w) { return str(obj(w)['職稱']); }),
+      '勞保': JSON.parse(JSON.stringify(obj(rd['勞保']))) });
+  }
+  // 欄位路徑：姓名、身分證字號、出生日期、戶籍地址、通訊地址、郵遞區號；lh.<欄>＝勞保表頭；md.<列>.<欄>＝勞保明細；title.<第幾筆>＝職稱
+  function fixGet(path, src) {
+    var p = path.split('.');
+    if (src) {   // 讀取（或重新判讀）時的原值：看改過沒有
+      if (p[0] === 'lh') return str(obj(LB()['表頭'])[p[1]]);
+      if (p[0] === 'md') return str(obj(arr(LB()['明細'])[+p[1]])[p[2]]);
+      if (p[0] === 'title') return str(obj(arr(J()['工作經歷'])[+p[1]])['職稱']);
+      if (p[0] === '通訊地址' || p[0] === '郵遞區號') return str(J()[p[0]]);
+      return str(IDC()[p[0]]);
+    }
+    var f = state.fix;
+    if (p[0] === 'lh') return str(f['勞保']['表頭'][p[1]]);
+    if (p[0] === 'md') return str(obj(f['勞保']['明細'][+p[1]])[p[2]]);
+    if (p[0] === 'title') return str(f['工作經歷職稱'][+p[1]]);
+    return str(f[p[0]]);
+  }
+  function setFix(path, v) {
+    var f = state.fix, p = path.split('.');
+    if (p[0] === 'lh') f['勞保']['表頭'][p[1]] = v;
+    else if (p[0] === 'md') { if (f['勞保']['明細'][+p[1]]) f['勞保']['明細'][+p[1]][p[2]] = v; }
+    else if (p[0] === 'title') f['工作經歷職稱'][+p[1]] = v;
+    else f[p[0]] = v;
+  }
+  function normFix(path, v) {
+    var k = path.split('.').pop();
+    if (/日期$/.test(k)) { var d = normDate(v); return d === null ? v : d; }
+    if (k === '身分證字號') return normId(v);
+    if (k === '郵遞區號') return digits(v);
+    return v;
+  }
+  function nows(s) { return str(s).replace(/\s+/g, ''); }
+  function hasItem(list, s) { s = nows(s); return list.some(function (x) { return nows(x) === s; }); }
+
+  // 一格欄位：o.ro＝只顯示；o.uc＝AI 看不清楚；o.need＝空的要標「缺」；o.lines＝多行；o.im＝鍵盤；o.ph＝提示
+  function fixField(path, label, o) {
+    o = o || {};
+    var v = fixGet(path), id = 'x_' + path.replace(/\./g, '_');
+    var cls = 'fl' + (o.uc ? ' uc' : '') + (v !== fixGet(path, true) ? ' chg' : '') + (o.need && !clean(v) ? ' need' : '');
+    var h = '<div class="' + cls + '" data-wrap="' + esc(path) + '"' + (o.need ? ' data-need="1"' : '') + '>';
+    if (o.ro) {
+      h += '<span class="fk">' + esc(label) + '</span><span class="fv">' + (v ? esc(v) : '（空白）') + '</span>';
+    } else {
+      h += '<label class="fk" for="' + id + '">' + esc(label) + '</label>';
+      var a = ' id="' + id + '" class="inp" data-fix="' + esc(path) + '" autocomplete="off"' + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '');
+      if (o.lines) h += '<textarea' + a + ' rows="2">' + esc(v) + '</textarea>';
+      else h += '<input type="text"' + a + (o.im ? ' inputmode="' + o.im + '"' : '') + ' value="' + esc(v) + '">';
+    }
+    return h + '<span class="tags">' + (o.uc ? '<span class="tag tuc">AI 看不清楚</span>' : '') +
+      '<span class="tag tchg">改過</span><span class="tag tneed">缺，要填</span></span></div>';
+  }
+
+  function listHTML(items) {
+    items = arr(items).map(str).filter(Boolean);
+    return items.length ? '<ul>' + items.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '';
+  }
+  function verdictHTML(j) {
+    var r = str(j['結果']), marks = arr(j['標記']).length ? '<p>提醒：</p>' + listHTML(j['標記']) : '';
+    if (r === '符合') return '<div class="box ok"><p class="vt">✔ 符合資格</p>' + marks +
+      '<p>資料都對的話，按最下面的「資料都對，產生申請文件」。</p></div>';
+    if (r === '不符合') return '<div class="box err"><p class="vt">✘ 不符合資格</p>' + listHTML(j['不符合原因']) +
+      '<p>資料已經存起來了（狀態「不符合」）。請跟學員說明原因，再按最下面的「結束」。</p></div>';
+    return '<div class="box warn"><p class="vt">！ 要確認</p>' + listHTML(j['要確認']) + marks +
+      '<p>改好按最下面的「改好了，重新判讀並產生」。現場處理不了的，按「先結束，請 Tomi 處理」。</p></div>';
+  }
+  function factsHTML(j) {
+    var u = j['工會漁會'], age = str(j['年齡']), h = '';
+    [['今天', j['今天']], ['年齡', age ? age + ' 歲' : ''], ['最後工作日', j['最後工作日']], ['滿 180 天', j['滿180天日']],
+     ['離開職場', j['離開職場']], ['工會漁會', u === null ? '沒有' : obj(u)['名稱'] ? obj(u)['名稱'] + (obj(u)['起'] ? '（' + obj(u)['起'] + ' 起）' : '') : '']
+    ].forEach(function (r) { if (str(r[1])) h += '<dt>' + esc(r[0]) + '</dt><dd>' + esc(str(r[1])) + '</dd>'; });
+    return h ? '<dl class="facts">' + h + '</dl>' : '';
+  }
+  // 三方比對：表單／身分證／勞保表頭；身分證、勞保那兩格可以改
+  function cmpHTML(ro) {
+    var list = arr(J()['比對']), id = IDC(), idu = arr(id['看不清楚']).map(str), lbu = arr(LB()['看不清楚']).map(str);
+    var h = '<h2 class="st">身分證、勞保、表單 對一對</h2><div class="idth">';
+    [['idFront', '正面', id['正面是身分證']], ['idBack', '反面', id['反面是身分證']]].forEach(function (x) {
+      var f = files[x[0]];
+      h += '<figure>' + (f && f.url ? '<img src="' + esc(f.url) + '" alt="身分證' + x[1] + '的照片">' : '<p class="hint">（照片不在這台電腦）</p>') +
+        '<figcaption>身分證' + x[1] + (x[2] === false ? ' <span class="tag tbad">✘ 看起來不是身分證</span>' : '') + '</figcaption></figure>';
+    });
+    h += '</div>';
+    ['姓名', '身分證字號', '出生日期'].forEach(function (k) {
+      var m = {};
+      list.forEach(function (x) { if (obj(x)['項目'] === k) m = x; });
+      var bad = m['一致'] === false, date = k === '出生日期';
+      var o = { ro: ro, im: date ? 'decimal' : '', ph: date ? '例 055/03/12' : '' };
+      h += '<div class="card' + (bad ? ' bad' : '') + '"><div class="ch"><span class="cn">' + esc(k) + '</span>' +
+        (bad ? '<span class="tag tbad">✘ 對不上</span>' : m['一致'] === true ? '<span class="tag tok">✔ 一致</span>' : '') + '</div>' +
+        (str(m['表單']) ? '<div class="fl"><span class="fk">表單</span><span class="fv">' + esc(m['表單']) + '</span></div>' : '') +
+        fixField(k, '身分證', { ro: ro, im: o.im, ph: o.ph, uc: hasItem(idu, k) }) +
+        fixField('lh.' + k, '勞保', { ro: ro, im: o.im, ph: o.ph, uc: lbu.some(function (s) { return !/^第/.test(nows(s)) && nows(s).indexOf(k) >= 0; }) }) +
+        '</div>';
+    });
+    return h;
+  }
+  function addrHTML(ro) {
+    var idu = arr(IDC()['看不清楚']).map(str);
+    return '<h2 class="st">地址</h2>' +
+      fixField('戶籍地址', '戶籍地址', { ro: ro, lines: true, need: true, uc: hasItem(idu, '戶籍地址') }) +
+      fixField('通訊地址', '通訊地址', { ro: ro, lines: true, need: true }) +
+      fixField('郵遞區號', '郵遞區號', { ro: ro, im: 'numeric', need: true, ph: '通訊地址的，例 820' });
+  }
+  function laborHTML(ro) {
+    var lb = LB(), uc = arr(lb['看不清楚']).map(str), rows = state.fix['勞保']['明細'], chain = arr(J()['投保鏈']);
+    var h = '<h2 class="st">勞保投保明細</h2>';
+    if (lb['是異動查詢'] === false) h += '<div class="box err"><p>✘ 這不是「異動查詢」那一頁（只有總覽不夠）。</p></div>';
+    if (lb['查無資料'] === true) h += '<div class="box err"><p>✘ 勞保資料寫「查無資料」。</p></div>';
+    if (lb['下載時間']) h += '<p class="hint">勞保資料下載時間：' + esc(lb['下載時間']) + '</p>';
+    if (uc.length) h += '<div class="box warn"><p>AI 看不清楚：' + esc(uc.join('、')) + '</p></div>';
+    if (chain.length) {
+      h += '<h3 class="st2">整理後（看就好）</h3><ul class="chain">';
+      chain.forEach(function (c) {
+        c = obj(c);
+        h += '<li><b>' + esc(c['投保單位']) + '</b>（' + esc(c['類型'] || '？') + '）<br>' + esc(c['起'] || '？') + ' ～ ' +
+          esc(c['迄'] || (c['還在保'] ? '現在' : '？')) + (c['還在保'] ? ' <span class="tag tbad">還在保</span>' : '') + '</li>';
+      });
+      h += '</ul>';
+    }
+    h += '<h3 class="st2">每一列' + (ro ? '' : '（可以改日期）') + '</h3>';
+    if (!rows.length) h += '<p>（沒有讀到投保紀錄）</p>';
+    rows.forEach(function (r, i) {
+      var n = i + 1;
+      h += '<div class="card"><div class="ch"><span class="cn">第 ' + n + ' 列</span><span>' + esc(r['投保單位'] || '（單位空白）') + '</span></div>' +
+        (r['備註'] ? '<p class="hint">備註：' + esc(r['備註']) + '</p>' : '') + '<div class="two">' +
+        fixField('md.' + i + '.生效日期', '生效日期', { ro: ro, im: 'decimal', ph: '例 110/03/01', uc: hasItem(uc, '第' + n + '列生效日期') }) +
+        fixField('md.' + i + '.退保日期', '退保日期', { ro: ro, im: 'decimal', ph: '沒有就空白', uc: hasItem(uc, '第' + n + '列退保日期') }) +
+        '</div></div>';
+    });
+    return h;
+  }
+  function jobsHTML(ro) {
+    var list = arr(J()['工作經歷']);
+    var h = '<h2 class="st">工作經歷</h2><p class="hint">申請表上會寫（最多 3 筆）。缺職稱的，請問學員後填上。</p>';
+    if (!list.length) h += '<p>（沒有工作經歷）</p>';
+    list.forEach(function (w, i) {
+      w = obj(w);
+      h += '<div class="card"><div class="ch"><span class="cn">' + esc(w['機構'] || '（機構空白）') + '</span></div>' +
+        '<p class="hint">' + esc((w['起'] || '？') + ' ～ ' + (w['迄'] || '？')) + '</p>' +
+        fixField('title.' + i, '職稱', { ro: ro, need: true, ph: '例：作業員' }) + '</div>';
+    });
+    return h;
+  }
+  function reviewHTML() {
+    var j = J(), res = str(j['結果']), ro = res === '不符合';
+    var h = '<h1>核對資料</h1><p class="lead">學員：' + esc(nameOf()) + '<span class="nw">（編號 ' + state.rid + '）</span></p>';
+    if (flash) h += '<div class="box ok" role="status"><p>' + escBr(flash) + '</p></div>';
+    h += verdictHTML(j) + factsHTML(j);
+    if (!ro) h += '<p class="hint">請拿學員的身分證和勞保資料對照。有「AI 看不清楚」的格子要照實填；改過的地方，按最下面的按鈕重新判讀才算數。</p>';
+    h += cmpHTML(ro) + addrHTML(ro) + laborHTML(ro) + jobsHTML(ro);
+    h += '<div id="msg" role="alert"></div>';
+    if (res === '符合') h += '<button type="button" class="btn" data-act="gen">資料都對，產生申請文件</button>';
+    else if (ro) h += '<button type="button" class="btn" data-act="endAsk">結束</button>';
+    else h += '<button type="button" class="btn" data-act="gen">改好了，重新判讀並產生</button>' +
+      '<button type="button" class="btn btn2" data-act="endAsk">先結束，請 Tomi 處理</button>';
+    h += '<div id="ask"></div>';
+    h += '<button type="button" class="alt" data-act="reeditAsk">回確認頁改答案、換勞保資料（要重新讀取）</button>';
+    return h + footHTML(false);
+  }
+
+  // ---------- 列印頁 ----------
+  // 手機、平板（學員自己的手機）：印表機在店裡的電腦 → 最上面叫她去列印站點自己的名字；這裡的列印按鈕縮小放最下面當退路。
+  // 文件沒存進雲端（試算表暫時連不上）列印站就看不到，照舊在這裡印
+  function printHTML() {
+    var o = obj(state.out), n = Number(o['頁數']) || 0, nm = nameOf(), pf = files.pdf_print, ef = files.pdf_env;
+    var far = TOUCH && o['已存雲端'] !== false, c1 = far ? 'btn btn2 sm' : 'btn', c2 = far ? 'btn btn2 sm' : 'btn btn2';
+    var h = '<h1>申請文件做好了</h1><p class="lead">學員：' + esc(nm) + '<span class="nw">（編號 ' + state.rid + '）</span></p>';
+    if (!pf) return h + '<div class="box warn"><p>申請文件沒有存到，要再產生一次。</p></div>' +
+      '<button type="button" class="btn" data-act="toReview">回到核對頁</button>';
+    // 一小段一小段不拆開（手機上一行約 10 個字）；名字太長才讓它換行，免得超出框
+    var who = '點「' + esc(nm) + '」';
+    if (far) h += '<div class="box go"><p><span class="nw">請到櫃台電腦的</span><span class="nw">「列印站」，</span>' +
+      (nm.length > 5 ? who : '<span class="nw">' + who + '</span>') + '<span class="nw">的名字列印</span></p></div>';
+    else if (TOUCH) h += '<div class="box err"><p>' + ['這份申請文件', '沒有存進雲端，', '櫃台電腦的「列印站」', '看不到。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') +
+      '<br>' + ['請把這支手機', '拿給現場人員，', '用下面的按鈕列印。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') + '</p></div>';
+    var btns = (TOUCH ? '<p class="hint">按「列印」會在新分頁打開 PDF，<span class="nw">再按「分享」→「列印」。</span>印完回到這一頁。</p>' : '') +
+      printBtn('pdf_print', '列印申請文件' + (n ? '（共 ' + n + ' 頁）' : ''), c1, '申請文件') +
+      '<a class="' + c2 + '" href="' + esc(pf.url) + '" download="' + esc('申請文件_' + nm + '.pdf') + '">下載 PDF</a>' +
+      (ef ? (far ? '<h3 class="st2">信封</h3>' : '<h2 class="st">信封</h2>') + '<p class="lead">先把 A4 牛皮紙信封<span class="nw">放進印表機。</span></p>' + printBtn('pdf_env', '印信封', c2, '信封') : '');
+    if (!far) h += btns;
+    h += '<h2 class="st">要簽名、寫日期的地方</h2>' + (arr(o['簽名處']).length ? '<ol class="plist">' + arr(o['簽名處']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>' : '<p>（沒有資料）</p>');
+    if (arr(o['提醒']).length) h += '<h2 class="st">提醒</h2><ul class="plist">' + arr(o['提醒']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
+    if (far) h += '<h2 class="st">列印站印不出來的時候</h2>' + btns;
+    h += '<div id="msg" role="alert"></div><button type="button" class="btn" data-act="nextAsk">下一位學員</button><div id="ask"></div>';
+    return h;
+  }
+  // 電腦：按鈕→隱藏框直接叫出列印視窗，下面一行退路（新分頁打開）；平板、手機：直接是新分頁打開的連結
+  function printBtn(k, label, cls, what) {
+    var url = esc(files[k].url);
+    if (TOUCH) return '<a class="' + cls + '" href="' + url + '" target="_blank" rel="noopener">' + esc(label) + '</a>';
+    return '<button type="button" class="' + cls + '" data-act="print" data-k="' + k + '">' + esc(label) + '</button>' +
+      '<a class="alt" href="' + url + '" target="_blank" rel="noopener">列印視窗沒有出來？用新分頁打開' + esc(what) + '</a>';
+  }
+  function printPdf(k) { if (files[k] && files[k].url) printUrl(files[k].url); }
+  // 隱藏框載入 PDF，載好叫出列印視窗；這台瀏覽器不能顯示 PDF、出錯、8 秒沒載好 → 改用新分頁打開
+  function printUrl(url) {
+    var old = document.getElementById('pframe');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (navigator.pdfViewerEnabled === false) { openTab(url); return; }
+    var fr = document.createElement('iframe'), done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; openTab(url); } }, 8000);
+    fr.id = 'pframe';
+    fr.className = 'pframe';
+    fr.title = '列印用';
+    fr.setAttribute('aria-hidden', 'true');
+    fr.tabIndex = -1;
+    fr.onload = function () {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      setTimeout(function () {
+        try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { openTab(url); }
+      }, 300);
+    };
+    fr.src = url;
+    document.body.appendChild(fr);
+  }
+  function openTab(url) {
+    var w = null;
+    try { w = window.open(url, '_blank'); } catch (e) { /* 被擋 */ }
+    if (!w) showMsg('列印視窗叫不出來。\n請按按鈕下面的「用新分頁打開」，在新分頁按列印。', 'warn');
+  }
+
+  // ---------- 列印站（店裡的電腦：學員在手機上產好的申請文件，點她的名字列印；規格 2-4、2-5） ----------
+  // 網址 #列印站 直接進來（店裡電腦設成書籤）。不碰這台電腦上做到一半的報名；拿到的 PDF 只放記憶體，名單上沒有了、離開就丟掉
+  var ST_HASH = '列印站';
+  var ST_EVERY = 20000;        // 每 20 秒自動更新
+  var ST_IDLE = 1800000;       // 30 分鐘沒人動滑鼠、鍵盤就先停（電腦整晚開著也不會一直叫雲端服務）；一動就馬上更新
+  var ST_GUARD = 1500;         // 名單剛變（多了一位、位置往下移）這段時間內按列印不算，免得印到別人的
+  var stList = null, stKey = '', stErr = '', stAt = '', stLoading = false, stSeq = 0, stTimer = 0;
+  var stActive = Date.now(), stIdle = false, stChanged = 0, stJob = '', stUrls = {};
+  var begun = false;           // 報名畫面開始過了沒（做到一半的照片、檔案拿回來了沒）
+
+  function atStation() {
+    var h = location.hash.slice(1);
+    try { h = decodeURIComponent(h); } catch (e) { /* 看不懂就照原樣比 */ }
+    return h === ST_HASH;
+  }
+  function openStation() {
+    if (!atStation()) { try { history.pushState(null, '', '#' + ST_HASH); } catch (e) { /* 網址沒變也照常用 */ } }
+    view = 'station';
+    if (codeMissing()) { codeWhy = 'first'; codeBack = 'station'; view = 'code'; render(); return; }
+    if (!stTimer) stTimer = setInterval(stTick, ST_EVERY);
+    stActive = Date.now();
+    stIdle = false;
+    render();
+    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
+    stLoad();
+  }
+  function closeStation() {
+    clearInterval(stTimer);
+    Object.keys(stUrls).forEach(function (k) { URL.revokeObjectURL(stUrls[k]); });
+    stTimer = 0; stUrls = {}; stList = null; stKey = ''; stErr = ''; stJob = ''; stLoading = false; stSeq++;
+    if (atStation()) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 同上 */ } }
+    view = 'screen';
+    if (!begun) { begin(); return; }
+    render();
+    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
+  }
+
+  function stClock() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+  function stStatus() {
+    if (stIdle) return '已經 30 分鐘沒人用，自動更新先停了。動一下滑鼠，或按「重新整理」。';
+    if (stLoading) return '更新中…';
+    return stAt ? '每 20 秒自動更新（上次 ' + stAt + '）' : '';
+  }
+  function paintStat() { var el = document.getElementById('stStat'); if (el) el.textContent = stStatus(); }
+
+  function stLoad() {
+    if (stLoading) return;
+    if (!API) { stList = []; render(); return; }   // 測試模式：沒有連雲端服務，名單一直是空的
+    var my = ++stSeq;
+    stLoading = true;
+    paintStat();
+    api('GET', '/api/recent', null, WAIT_MS.recent, function (r) {
+      if (my !== stSeq) return;
+      stLoading = false;
+      if (view !== 'station') return;
+      if (!r.ok) {
+        if (codeRejected(r)) return;
+        stErr = errText('recent', r);   // 舊名單留著
+        render();
+        return;
+      }
+      var list = arr(r.data['文件']).map(obj).filter(function (d) { return Number(d['編號']) > 0; });
+      var key = JSON.stringify(list), had = stErr;
+      stErr = '';
+      stAt = stClock();
+      if (key !== stKey) {
+        stList = list; stKey = key; stChanged = Date.now();
+        Object.keys(stUrls).forEach(function (k) {   // 名單上沒有了的人：PDF 丟掉
+          if (!list.some(function (d) { return Number(d['編號']) === Number(k.split('|')[0]); })) { URL.revokeObjectURL(stUrls[k]); delete stUrls[k]; }
+        });
+        render();
+      } else if (had) render();
+      else paintStat();   // 沒變就只改「上次更新」，不重畫（不會在滑鼠底下跳動）
+    });
+  }
+  function stTick() {
+    if (view !== 'station' || stIdle || document.hidden) return;
+    if (Date.now() - stActive > ST_IDLE) { stIdle = true; paintStat(); return; }
+    stLoad();
+  }
+  // 有人動滑鼠、鍵盤、摸螢幕；切回這個分頁（now＝true）：停了的話馬上更新
+  function stWake(now) {
+    stActive = Date.now();
+    if (view === 'station' && (stIdle || now === true)) { stIdle = false; stLoad(); }
+  }
+
+  function stationHTML() {
+    var h = '<h1>剛產好的申請文件</h1><div class="sbar"><p class="hint" id="stStat">' + esc(stStatus()) + '</p>' +
+      '<button type="button" class="btn btn2 sm" data-act="stReload">重新整理</button></div>';
+    if (stErr) h += '<div class="box err"><p>' + escBr(stErr) + '</p></div>';
+    h += '<div id="msg" role="alert"></div>';
+    if (stList === null) h += stErr ? '' : '<div class="box warn" role="status"><p>正在讀取，請稍等…</p></div>';
+    else if (!stList.length) h += '<div class="box warn"><p>還沒有產好的文件。<br>學員在手機上按「產生申請文件」之後，這裡會出現她的名字。</p></div>';
+    else h += '<ol class="slist">' + stList.map(stRowHTML).join('') + '</ol>';
+    return h + '<div class="foot"><button type="button" class="linkbtn" data-act="stExit">回報名畫面</button></div>';
+  }
+  function stRowHTML(d) {
+    var no = Number(d['編號']), nm = str(d['姓名']) || '（沒有姓名）';
+    var h = '<li class="srow"><p class="shead"><span class="stime">' + esc((d['昨天'] ? '昨天 ' : '') + str(d['時間'])) + '</span>' +
+      '<span class="sname">' + esc(nm) + '</span><span class="smeta">' + esc(str(d['梯次'])) + '<span class="nw">｜編號 ' + no + '</span></span></p>' +
+      '<div class="sbtns"><div>' + stBtn(no, nm, '申請文件', '列印申請文件', 'btn') + '</div>';
+    if (d['有信封']) h += '<div><p class="snote">先把 A4 牛皮紙信封放進印表機</p>' + stBtn(no, nm, '信封', '印信封', 'btn btn2') + '</div>';
+    // 退路連結統一放在兩顆按鈕下面一行，按鈕才不會一高一低
+    var links = ['申請文件', '信封'].filter(function (k) { return stUrls[no + '|' + k]; }).map(function (k) {
+      return '<a href="' + esc(stUrls[no + '|' + k]) + '" target="_blank" rel="noopener">' + esc(k) + '</a>';
+    });
+    return h + '</div>' + (links.length ? '<p class="sfall">列印視窗沒有出來？用新分頁打開：' + links.join('') + '</p>' : '') + '</li>';
+  }
+  function stBtn(no, nm, kind, label, cls) {
+    var on = stJob === no + '|' + kind;
+    return '<button type="button" class="' + cls + '" data-act="stPrint" data-no="' + no + '" data-kind="' + esc(kind) + '" aria-label="' +
+      esc(label + '：' + nm) + '"' + (on ? ' aria-disabled="true"' : '') + '>' + esc(on ? '準備中，請稍等…' : label) + '</button>';
+  }
+
+  // 點了列印：跟雲端服務拿那一位的 PDF → 叫出列印視窗（跟列印頁一樣）
+  function stPrint(no, kind) {
+    var d = null, k = no + '|' + kind;
+    arr(stList).forEach(function (x) { if (Number(x['編號']) === no) d = x; });
+    if (!d) return;
+    if (stJob) { showMsg('上一份還在準備，請等一下。', 'warn'); return; }
+    if (Date.now() - stChanged < ST_GUARD) { showMsg('名單剛剛更新了，請再看一次名字，再按一次。', 'warn'); return; }
+    stJob = k;
+    render();
+    api('GET', '/api/packet?' + encodeURIComponent('編號') + '=' + no + '&' + encodeURIComponent('種類') + '=' + encodeURIComponent(kind),
+      null, WAIT_MS.packet, function (r) {
+        if (stJob !== k) return;   // 已經離開列印站
+        stJob = '';
+        if (view !== 'station') return;
+        var b = r.ok ? b64Blob(r.data.base64, 'application/pdf') : null, n = r.ok ? Number(r.data['頁數']) || 0 : 0;
+        if (!r.ok && codeRejected(r)) return;
+        if (!b) {
+          render();
+          showMsg(r.ok ? '拿文件沒有成功：雲端服務回的檔案是空的。\n請再按一次；一直這樣請聯絡 Tomi。' : errText('packet', r));
+          return;
+        }
+        if (stUrls[k]) URL.revokeObjectURL(stUrls[k]);
+        stUrls[k] = URL.createObjectURL(b);
+        render();
+        if (TOUCH) { showMsg('請按按鈕下面「用新分頁打開」的「' + kind + '」，在新分頁列印。', 'ok'); return; }
+        showMsg('正在叫出「' + str(d['姓名']) + '」的' + kind + (n ? '（共 ' + n + ' 頁）' : '') + '的列印視窗…', 'ok');
+        printUrl(stUrls[k]);
+      });
+  }
+
+  // ---------- 換畫面 ----------
   function render() {
     var h;
     followKey = null;
-    if (view === 'welcome') h = welcomeHTML();
+    if (waitTimer && view !== 'wait') { clearInterval(waitTimer); waitTimer = 0; }
+    if (view === 'code') h = codeHTML();
+    else if (view === 'wait') h = waitHTML();
+    else if (view === 'station') h = stationHTML();
+    else if (view === 'welcome') h = welcomeHTML();
     else if (state.pos === 0) h = introHTML();
     else if (state.pos <= N) h = questionHTML(QS[state.pos - 1]);
     else if (state.pos === SUBMIT) h = submitHTML();
-    else h = doneHTML();
+    else if (state.pos === REVIEW) h = reviewHTML();
+    else h = printHTML();
     notice = '';
-    app.innerHTML = h;
+    flash = '';
+    app.className = 'wrap' + ((view === 'screen' && state.pos >= REVIEW) || view === 'station' ? ' wide' : '');
+    app.innerHTML = (API ? '' : '<p class="tm" role="note">測試模式：沒有連雲端服務，資料不會送出</p>') + h;
     shownAt = Date.now();
     var q = curQ();
-    if (q) { updateFollow(q); updateNext(q, true); growAll(); }
+    if (q) { updateFollow(q); updateNext(q, true); }
+    growAll();
   }
 
   function go(p) {
     state.pos = p;
-    if (p === SUBMIT) confirmChecked = false;   // 每次到送出頁都要重新勾確認
+    if (p === SUBMIT) confirmChecked = false;   // 每次到確認頁都要重新勾「本人確認」
+    if (p >= 1 && p <= N && QS[p - 1].type === 'batch') loadBatches();   // 到選梯次這一題就重新讀（剩幾位、有沒有額滿）
     save();
     render();
     try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
@@ -617,19 +1418,19 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
   function showMsg(text, cls) {
     var m = document.getElementById('msg');
     if (!m) return;
-    m.innerHTML = '<div class="box ' + (cls || 'err') + '"><p>！ ' + esc(text).replace(/\n/g, '<br>') + '</p></div>';   // \n＝一句一行
+    m.innerHTML = '<div class="box ' + (cls || 'err') + '"><p>' + (cls === 'ok' ? '' : '！ ') + escBr(text) + '</p></div>';   // \n＝一句一行
     scrollToEl(m);
   }
   function hideMsg() { var m = document.getElementById('msg'); if (m) m.innerHTML = ''; }
 
   // 多行輸入框跟著字變高，整段地址一眼看得完（不用在框裡面捲）
   function autoGrow(el) {
-    if (!el || el.tagName !== 'TEXTAREA' || !el.getAttribute('data-field')) return;
+    if (!el || el.tagName !== 'TEXTAREA' || !(el.getAttribute('data-field') || el.getAttribute('data-fix'))) return;
     el.style.height = 'auto';
     el.style.height = (el.scrollHeight + 6) + 'px';
   }
   function growAll() {
-    var els = app.querySelectorAll('textarea[data-field]');
+    var els = app.querySelectorAll('textarea');
     for (var i = 0; i < els.length; i++) autoGrow(els[i]);
   }
 
@@ -667,8 +1468,9 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
   }
 
   function nextLabel(q) {
+    if (state.back >= SUBMIT) return (q.type === 'photo' ? '清楚，' : '改好了，') + (state.back === REVIEW ? '回核對頁' : '回確認頁');
     if (q.type === 'photo') return '清楚，下一步';
-    if (q.type === 'doc') return files[q.id] ? '下一步：送出' : '跳過';
+    if (q.type === 'batch') return '下一步：確認資料';
     if (q.type === 'multi') return selOf(q).length ? '選好了，下一題' : '跳過這題';
     if (q.type === 'text' && !q.req) return textOf(q) ? '下一題' : '跳過這題';
     return '下一題';
@@ -681,7 +1483,8 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
       var o = optByT(q, state.a[q.id]);
       b.hidden = !(o && (o.f || initial));   // 單選第一次點會自動跳題，不用按鈕
     }
-    if (q.type === 'doc') b.className = 'btn' + (files[q.id] ? '' : ' btn2');   // 還沒選檔：「跳過」用白底，上傳才是主要按鈕
+    if (q.type === 'batch') b.hidden = !state.batch;   // 點梯次會自動往下；沒得選就不能往下
+    if (q.type === 'docs') b.className = 'btn' + (state.docs.length ? '' : ' btn2');   // 還沒選檔：選檔才是主要按鈕
     b.textContent = nextLabel(q);
   }
 
@@ -697,21 +1500,22 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     els[i].parentNode.insertBefore(m, els[i].nextSibling);
   }
 
-  // 下一題；回去補拍、補選的時候，補完直接回到原本的位置（不用一題一題按回去）
+  // 下一題；從確認頁、核對頁來改的，或回去補拍、補選的，補完直接回到原本的位置
   function advance() {
     var p = state.pos + 1;
-    if (backTo) {
-      p = lostAt(p, backTo) || backTo;
-      if (p === backTo) backTo = 0;
+    if (state.back) {
+      p = lostAt(p, state.back) || state.back;
+      if (p === state.back) state.back = 0;
     }
     go(p);
   }
 
   // 「歡迎回來」：有照片、檔案沒存到，先回去補，補完回到上次的位置
   function resume() {
-    var lost = lostAt(1, state.pos);
+    var lost = state.pos === PRINT ? 0 : lostAt(1, state.pos);
     view = 'screen';
-    if (lost) backTo = state.pos;
+    state.wait = '';
+    if (lost && !(state.back > state.pos)) state.back = state.pos;
     go(lost || state.pos);
   }
 
@@ -764,10 +1568,15 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
       if (f && q.type !== 'multi') { try { f.focus(); } catch (e) { /* 略過 */ } }
       return;
     }
+    if (q.type === 'docs') docsLost = 0;
     advance();
   }
 
-  function onBack() { go(state.pos - 1); }
+  // 從確認頁、核對頁來改的：「回確認頁」先檢查這題再回去
+  function onBack() {
+    if (state.pos <= N && state.back >= SUBMIT) { onNext(); return; }
+    go(state.pos - 1);
+  }
 
   function onChk(el) {
     confirmChecked = !confirmChecked;
@@ -778,12 +1587,12 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
   }
 
   // ---------- 拍照、上傳 ----------
-  // 照片縮到長邊 1600px 轉成 JPEG；瀏覽器把照片畫進 canvas 時會照 EXIF 自動轉正
-  function shrink(file, done) {
+  // 照片縮到長邊 edge px 轉成 JPEG；瀏覽器把照片畫進 canvas 時會照 EXIF 自動轉正（iPhone 的 HEIC 在 Safari 也是這樣轉成 JPEG）
+  function shrink(file, edge, quality, done) {
     var url = URL.createObjectURL(file), img = new Image();
     img.onload = function () {
       try {
-        var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, MAX_EDGE / Math.max(w, h, 1));
+        var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, edge / Math.max(w, h, 1));
         var c = document.createElement('canvas');
         c.width = Math.max(1, Math.round(w * k));
         c.height = Math.max(1, Math.round(h * k));
@@ -792,25 +1601,19 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
         g.fillRect(0, 0, c.width, c.height);
         g.drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
-        c.toBlob(function (b) { done(b); }, 'image/jpeg', JPEG_Q);
+        c.toBlob(function (b) { done(b); }, 'image/jpeg', quality);
       } catch (e) { URL.revokeObjectURL(url); done(null); }
     };
     img.onerror = function () { URL.revokeObjectURL(url); done(null); };
     img.src = url;
   }
 
-  // 收到拍好、選好的檔案：照片縮小，PDF 原樣（最大 10MB）
+  // 身分證照片：縮到長邊 1600px
   function takeFile(q, file) {
-    if (q.type === 'doc' && (/pdf/i.test(file.type) || /\.pdf$/i.test(file.name || ''))) {
-      if (file.size > MAX_BYTES) { showMsg('這個檔案超過 10MB，太大了。請按「跳過」，之後用 LINE 傳給老師。'); return; }
-      keepFile(q, { blob: file, mime: 'application/pdf', name: q.fileKind + '.pdf',
-        label: (file.name || 'PDF 檔') + '（' + Math.max(1, Math.round(file.size / 1024)) + ' KB）' });
-      return;
-    }
-    if (file.type && !/^image\//i.test(file.type)) { showMsg(q.type === 'doc' ? '只能上傳 PDF 或照片。' : '請選一張照片。'); return; }
+    if (file.type && !/^image\//i.test(file.type)) { showMsg('請選一張照片。'); return; }
     working = q.id;
     refresh(q);
-    shrink(file, function (blob) {
+    shrink(file, MAX_EDGE, JPEG_Q, function (blob) {
       working = '';
       if (!blob) { refresh(q); if (curQ() === q) showMsg('這張照片打不開，請重拍或換一張。'); return; }
       keepFile(q, { blob: blob, mime: 'image/jpeg', name: q.fileKind + '.jpg', url: URL.createObjectURL(blob), label: '照片' });
@@ -821,7 +1624,7 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     files[q.id] = f;
     state.had[q.id] = true;
     save();
-    idbPut(q.id, f);   // 存進手機：網頁重新打開不用重拍
+    idbPut(q.id, f);   // 存進這台電腦：網頁重新打開不用重拍
     refresh(q);
     if (curQ() === q) scrollToEl(document.getElementById('retake') || document.getElementById('next'));   // 兩個大按鈕都要看得到
   }
@@ -829,109 +1632,344 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     if (files[id] && files[id].url) URL.revokeObjectURL(files[id].url);
     delete files[id];
   }
-  function unfile() {
-    var q = curQ();
-    if (!q) return;
-    dropFile(q.id);
-    idbDel(q.id);
-    delete state.had[q.id];
+
+  // 勞保資料：可以一次選好幾個；PDF 原檔（10MB 內）、照片截圖縮到長邊 2400px
+  function takeDocs(q, list) {
+    var todo = Array.prototype.slice.call(list), room = MAX_DOCS - state.docs.length, errs = [];
+    if (todo.length > room) { todo = todo.slice(0, Math.max(0, room)); errs.push('最多 ' + MAX_DOCS + ' 個檔案，多的沒有加進來。'); }
+    working = q.id;
+    refresh(q);
+    (function step() {
+      if (!todo.length) {
+        working = '';
+        refresh(q);
+        if (curQ() === q) { if (errs.length) showMsg(errs.join('\n')); else scrollToEl(document.getElementById('next')); }
+        return;
+      }
+      var file = todo.shift(), nm = file.name || '';
+      if (/pdf/i.test(file.type) || /\.pdf$/i.test(nm)) {
+        if (file.size > MAX_BYTES) errs.push('「' + nm + '」超過 10MB，太大了。');
+        else addDoc({ blob: file, mime: 'application/pdf', name: nm, label: (nm || 'PDF 檔') + '（' + kb(file.size) + '）' });
+        step();
+        return;
+      }
+      if (file.type && !/^image\//i.test(file.type)) { errs.push('「' + nm + '」不是 PDF 或照片，不能上傳。'); step(); return; }
+      shrink(file, DOC_EDGE, DOC_Q, function (blob) {
+        if (!blob) errs.push('「' + (nm || '照片') + '」打不開，請換一張，或改用截圖、PDF。');
+        else addDoc({ blob: blob, mime: 'image/jpeg', name: nm, url: URL.createObjectURL(blob), label: (nm || '照片') + '（' + kb(blob.size) + '）' });
+        step();
+      });
+    })();
+  }
+  function addDoc(f) {
+    var k = 'doc_' + Date.now().toString(36) + '_' + (++docSeq);
+    files[k] = f;
+    state.docs.push({ k: k, label: f.label, mime: f.mime, size: f.blob.size });
+    docsLost = 0;
+    save();
+    idbPut(k, f);
+  }
+  function undoc(k) {
+    state.docs = state.docs.filter(function (x) { return x.k !== k; });
+    dropFile(k);
+    idbDel(k);
     save();
     render();
   }
   // 還停在這題才重畫（處理照片時她可能已經按了上一題）
   function refresh(q) { if (curQ() === q) render(); }
 
-  // ---------- 送出（規格第 5-1 節） ----------
+  // ---------- 梯次（規格 2-1） ----------
+  function loadBatches() {
+    var my = ++batchSeq;
+    batchLoading = true;
+    batchErr = '';
+    if (!API) { setTimeout(function () { if (my === batchSeq) { batchLoading = false; gotBatches(SAMPLE_BATCHES); } }, 200); return; }
+    api('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
+      if (my !== batchSeq) return;
+      batchLoading = false;
+      if (r.ok) { gotBatches(arr(r.data['梯次'])); return; }
+      var q = curQ();
+      if (q && q.type === 'batch' && codeRejected(r)) return;
+      batches = null;
+      batchErr = errText('batches', r);
+      refreshBatch();
+    });
+  }
+  function gotBatches(list) {
+    var ok = [], no = [];
+    list.forEach(function (b) { b = obj(b); if (b['梯次']) (b['狀態'] === '開放報名' ? ok : no).push(b); });
+    batches = ok.concat(no);   // 能選的排前面
+    if (state.batch) {
+      var now = null;
+      batches.forEach(function (b) { if (b['梯次'] === state.batch['梯次']) now = b; });
+      if (now && now['狀態'] === '開放報名') state.batch = snap(now);   // 更新剩幾位
+      else { batchGone = state.batch['梯次'] + '（' + (now ? now['狀態'] : '已經沒有這一梯') + '）'; state.batch = null; }
+      save();
+    }
+    refreshBatch();
+  }
+  function snap(b) {
+    var s = {};
+    ['梯次', '開課日', '星期', '上課時間', '上課地點', '辦訓單位', '課程名稱', '剩餘', '寄件截止'].forEach(function (k) { if (b[k] != null) s[k] = b[k]; });
+    return s;
+  }
+  function refreshBatch() { var q = curQ(); if (q && q.type === 'batch') render(); }
+  function onBatch(i) {
+    var b = arr(batches)[i];
+    if (!b || b['狀態'] !== '開放報名') return;
+    state.batch = snap(b);
+    batchGone = '';
+    save();
+    var els = app.querySelectorAll('.opt[data-act="batch"]');
+    for (var k = 0; k < els.length; k++) els[k].setAttribute('aria-checked', k === i ? 'true' : 'false');
+    hideMsg();
+    busy = true;   // 讓她看到勾勾再往下
+    setTimeout(function () { busy = false; advance(); }, 350);
+  }
+
+  // ---------- 送出，讀取資料（規格 2-2） ----------
   function onSubmit() {
     if (!confirmChecked) {
-      showMsg('請先勾「我確認」，\n再按「送出」。');
+      showMsg('請先勾「本人確認」，\n再按「送出，讀取資料」。');
       return;
     }
     for (var i = 0; i < N; i++) {
       var err = check(QS[i]);
-      if (err) { backTo = SUBMIT; go(i + 1); showMsg('這題還沒填好：' + err); return; }
+      if (err) { state.back = SUBMIT; go(i + 1); showMsg('這題還沒填好：' + err); return; }
     }
-    setSending(true);
-    makePayload(function (data, bad) {
-      if (!data) {   // 檔案讀不到：回到那一題重拍、重選，補完回到送出頁
-        setSending(false);
-        dropFile(bad.id);
-        backTo = SUBMIT;
-        go(QS.indexOf(bad) + 1);
+    var list = [{ k: 'idFront', kind: '身分證正面' }, { k: 'idBack', kind: '身分證反面' }]
+      .concat(state.docs.map(function (x) { return { k: x.k, kind: '勞保資料' }; }));
+    busy = true;
+    makeFiles(list, function (out, gone) {
+      busy = false;
+      if (!out) { fileGone(gone.k); return; }
+      var data = { '送出時間': nowTW(), '姓名': nameOf(), '手機': textOf(qById('phone')), '梯次': state.batch['梯次'],
+        '資料表': buildText(), '檔案': out };
+      if (state.pend) data['編號'] = state.pend;   // 上次讀取失敗、資料已經存了：帶編號，不會多存一列
+      if (!API) {
+        console.log('測試模式：沒有連雲端服務。要送出的資料（檔案內容省略）：\n' + JSON.stringify(preview(data), null, 2));
+        showMsg('測試模式：沒有連雲端服務，資料沒有送出。\n（要送的內容印在瀏覽器的 console）', 'warn');
         return;
       }
-      if (!API_URL) {
-        setSending(false);
-        console.log('測試模式：還沒接上老師的試算表。要送出的資料（檔案內容省略）：\n' + JSON.stringify(preview(data), null, 2));
-        showMsg('測試模式：還沒接上老師的試算表', 'warn');
-        return;
-      }
-      postJSON(JSON.stringify(data), function (ok, why) {
-        setSending(false);
-        if (ok) { state.sent = true; Object.keys(files).forEach(dropFile); idbClear(); go(DONE); return; }   // 送到了：照片從手機刪掉
-        console.warn('送出失敗：' + why);
-        showMsg('沒有送出成功。\n請再按一次「送出」。\n一直送不出去的話，\n請截圖傳 LINE 給老師。');
+      state.sheet = data['資料表'];
+      state.wait = 'read';
+      save();
+      showWait('read');
+      api('POST', '/api/read', JSON.stringify(data), WAIT_MS.read, function (r) {
+        state.wait = '';
+        if (r.ok) { gotRead(r.data); return; }
+        if (r.data && Number(r.data['編號']) > 0) state.pend = Number(r.data['編號']);   // 失敗但已經存進試算表了
+        view = 'screen';
+        save();
+        if (codeRejected(r)) return;
+        render();
+        showMsg(errText('read', r) + (state.pend ? '\n（資料已經存好了，編號 ' + state.pend + '；再按一次不會重複存）' : ''));
       });
     });
   }
-
-  // 送出中：按鈕換字、所有按鈕都先不理
-  function setSending(on) {
-    busy = on;
-    var b = document.getElementById('send');
-    if (b) {
-      b.textContent = on ? '送出中，請稍等…' : '送出';
-      b.setAttribute('aria-disabled', on || !confirmChecked ? 'true' : 'false');
-    }
-    if (on) hideMsg();
+  function gotRead(d) {
+    var rd = { '身分證': obj(d['身分證']), '勞保': obj(d['勞保']), '判讀': obj(d['判讀']) };
+    state.rid = Number(d['編號']) || 0;
+    state.pend = 0;
+    state.read = rd;
+    state.fix = makeFix(rd);
+    state.out = null;
+    view = 'screen';
+    go(REVIEW);
   }
 
-  // 組送出的資料；檔案轉成 base64（照片已經縮小過）
-  function makePayload(done) {
-    var list = QS.filter(function (q) { return files[q.id]; }), out = [], i = 0;
+  // 檔案轉成 base64（照片已經縮小過）；list：[{k, kind}]；讀不到的檔 → done(null, 那一個)
+  function makeFiles(list, done) {
+    var out = [], i = 0;
     (function step() {
-      if (i === list.length) {
-        done({ '版本': 2, '送出時間': nowTW(), '姓名': textOf(qById('name')), '手機': textOf(qById('phone')),
-          '資料表': buildText(), '檔案': out });
-        return;
-      }
-      var q = list[i++], f = files[q.id], r = new FileReader();
-      r.onload = function () {
-        out.push({ '種類': q.fileKind, '檔名': f.name, 'mime': f.mime, 'base64': String(r.result).split(',')[1] || '' });
-        step();
-      };
-      r.onerror = function () { done(null, q); };
+      if (i === list.length) { done(out); return; }
+      var it = list[i++], f = files[it.k], r = new FileReader();
+      if (!f) { done(null, it); return; }
+      r.onload = function () { out.push({ '種類': it.kind, 'mime': f.mime, 'base64': String(r.result).split(',')[1] || '' }); step(); };
+      r.onerror = function () { done(null, it); };
       r.readAsDataURL(f.blob);
     })();
   }
-
+  // 檔案讀不到（這台電腦把它清掉了）：回到那一題重拍、重選，補完回到原本的畫面
+  function fileGone(k) {
+    var doc = /^doc_/.test(k);
+    if (doc) { state.docs = state.docs.filter(function (x) { return x.k !== k; }); docsLost = 1; }
+    dropFile(k);
+    state.back = state.pos;
+    go(QS.indexOf(qById(doc ? 'labor' : k)) + 1);
+  }
   // 測試模式印在 console 的版本：base64 太長，只寫長度
   function preview(data) {
     var c = {};
     for (var k in data) c[k] = data[k];
-    c['檔案'] = data['檔案'].map(function (f) {
-      return { '種類': f['種類'], '檔名': f['檔名'], 'mime': f.mime, 'base64': '（省略，共 ' + f.base64.length + ' 字）' };
-    });
+    c['檔案'] = data['檔案'].map(function (f) { return { '種類': f['種類'], 'mime': f.mime, 'base64': '（省略，共 ' + f.base64.length + ' 字）' }; });
     return c;
   }
 
-  // POST 到老師的試算表。只有讀到 {"ok": true} 才算成功；網路斷、60 秒沒回、回的不是 JSON 都算失敗、資料留著
-  function postJSON(body, cb) {
-    var ended = false, ctrl = typeof AbortController === 'function' ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); end(false, '超過 60 秒沒有回應'); }, SEND_MS);
-    function end(ok, why) { if (!ended) { ended = true; clearTimeout(timer); cb(ok, why); } }
+  // 等候畫面：讀秒讓她知道還在跑
+  function showWait(kind) {
+    view = 'wait';
+    waitKind = kind;
+    waitStart = Date.now();
+    render();
+    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
+    if (waitTimer) clearInterval(waitTimer);
+    waitTimer = setInterval(function () {
+      var el = document.getElementById('waited');
+      if (el) el.textContent = '已經等了 ' + Math.round((Date.now() - waitStart) / 1000) + ' 秒';
+    }, 1000);
+  }
+
+  // ---------- 核對後產生申請文件（規格 2-3） ----------
+  // 送出前的格式檢查；有問題回傳 {path, msg}
+  function checkFix() {
+    var f = state.fix, i, bad, rows = f['勞保']['明細'], jobs = arr(J()['工作經歷']);
+    function need(path, label) { return clean(fixGet(path)) ? null : { path: path, msg: label + '是空的，請填上。' }; }
+    function date(path, label, may) {
+      var v = fixGet(path);
+      if (!clean(v)) return may ? null : { path: path, msg: label + '是空的，請照文件填上。' };
+      return normDate(v) ? null : { path: path, msg: label + '「' + v + '」看不懂，請寫成像 055/03/12 這樣（民國年/月/日）。' };
+    }
+    bad = need('姓名', '姓名（身分證）') ||
+      (/^[A-Z][A-D0-9]\d{8}$/.test(normId(f['身分證字號'])) ? null : { path: '身分證字號', msg: '身分證字號（身分證）要 1 個英文字母加 9 個數字，請再看一下。' }) ||
+      date('出生日期', '出生日期（身分證）') || date('lh.出生日期', '出生日期（勞保）', true) ||
+      need('戶籍地址', '戶籍地址') || need('通訊地址', '通訊地址') ||
+      (/^\d{3}(\d{2,3})?$/.test(digits(f['郵遞區號'])) ? null : { path: '郵遞區號', msg: '郵遞區號要 3 個數字（或 5、6 個），請填上通訊地址的郵遞區號。' });
+    if (bad) return bad;
+    for (i = 0; i < rows.length; i++) {
+      bad = date('md.' + i + '.生效日期', '勞保第 ' + (i + 1) + ' 列的生效日期') || date('md.' + i + '.退保日期', '勞保第 ' + (i + 1) + ' 列的退保日期', true);
+      if (bad) return bad;
+    }
+    for (i = 0; i < f['工作經歷職稱'].length; i++) {
+      if (!clean(f['工作經歷職稱'][i])) return { path: 'title.' + i, msg: '工作經歷第 ' + (i + 1) + ' 筆（' + str(obj(jobs[i])['機構']) + '）還沒填職稱，請問學員後填上。' };
+    }
+    return null;
+  }
+  // 送出的「核對後」（3-4 的格式；日期整理成 YYY/MM/DD、字號大寫；勞保的「看不清楚」照 AI 原本的清單）
+  function fixOut() {
+    var f = state.fix, lb = JSON.parse(JSON.stringify(f['勞保']));
+    function d(v) { var x = normDate(v); return x === null ? clean(v) : x; }
+    lb['明細'].forEach(function (r) { ['生效日期', '退保日期'].forEach(function (k) { if (r[k] != null) r[k] = d(r[k]); }); });
+    if (lb['表頭']['姓名'] != null) lb['表頭']['姓名'] = clean(lb['表頭']['姓名']);
+    if (lb['表頭']['身分證字號'] != null) lb['表頭']['身分證字號'] = normId(lb['表頭']['身分證字號']);
+    if (lb['表頭']['出生日期'] != null) lb['表頭']['出生日期'] = d(lb['表頭']['出生日期']);
+    return { '姓名': clean(f['姓名']), '身分證字號': normId(f['身分證字號']), '出生日期': d(f['出生日期']), '戶籍地址': clean(f['戶籍地址']),
+      '通訊地址': clean(f['通訊地址']), '郵遞區號': digits(f['郵遞區號']), '工作經歷職稱': f['工作經歷職稱'].map(clean), '勞保': lb };
+  }
+  // 重新判讀的結果（409）：換掉判讀；已經填的職稱照機構對回去（工作經歷的順序可能變了）
+  function rejudged(j) {
+    var old = arr(J()['工作經歷']), titles = state.fix['工作經歷職稱'], byOrg = {};
+    old.forEach(function (w, i) { if (clean(titles[i])) byOrg[str(obj(w)['機構'])] = titles[i]; });
+    state.read['判讀'] = j;
+    state.fix['工作經歷職稱'] = arr(j['工作經歷']).map(function (w) {
+      w = obj(w);
+      return byOrg[str(w['機構'])] != null ? byOrg[str(w['機構'])] : str(w['職稱']);
+    });
+  }
+
+  function wrapOf(path) {
+    var els = app.querySelectorAll('[data-wrap]');
+    for (var i = 0; i < els.length; i++) if (els[i].getAttribute('data-wrap') === path) return els[i];
+    return null;
+  }
+  function paintFix(path) {
+    var w = wrapOf(path), v = fixGet(path);
+    if (!w) return;
+    w.classList.toggle('chg', v !== fixGet(path, true));
+    if (w.getAttribute('data-need')) w.classList.toggle('need', !clean(v));
+  }
+  function clearErr() {
+    var els = app.querySelectorAll('.ftxt'), i;
+    for (i = 0; i < els.length; i++) els[i].parentNode.removeChild(els[i]);
+    els = app.querySelectorAll('.ferr');
+    for (i = 0; i < els.length; i++) els[i].classList.remove('ferr');
+  }
+  // 有問題的格子框紅色、底下寫原因，游標移過去
+  function markErr(path, msg) {
+    clearErr();
+    var w = wrapOf(path);
+    if (!w) return;
+    w.classList.add('ferr');
+    var p = document.createElement('p');
+    p.className = 'ftxt';
+    p.textContent = '！ ' + msg;
+    w.appendChild(p);
+    var inp = w.querySelector('.inp');
+    if (inp) { try { inp.focus(); } catch (e) { /* 略過 */ } }
+  }
+
+  function onGen() {
+    var bad = checkFix();
+    if (bad) { showMsg(bad.msg); markErr(bad.path, bad.msg); return; }
+    busy = true;
+    makeFiles([{ k: 'idFront', kind: '身分證正面' }, { k: 'idBack', kind: '身分證反面' }], function (out, gone) {
+      busy = false;
+      if (!out) { fileGone(gone.k); return; }
+      var data = { '編號': state.rid, '梯次': state.batch ? state.batch['梯次'] : '', '資料表': state.sheet || buildText(),
+        '核對後': fixOut(), '檔案': out };
+      state.wait = 'gen';
+      save();
+      showWait('gen');
+      api('POST', '/api/generate', JSON.stringify(data), WAIT_MS.gen, function (r) {
+        state.wait = '';
+        if (r.ok) { gotDocs(r.data); return; }
+        view = 'screen';
+        if (r.status === 409 && r.data && r.data['判讀'] && typeof r.data['判讀'] === 'object') {
+          rejudged(r.data['判讀']);
+          flash = '已經用改過的資料重新判讀，結果是「' + (str(J()['結果']) || '要確認') + '」。請看下面。';
+          go(REVIEW);
+          return;
+        }
+        save();
+        if (codeRejected(r)) return;
+        render();
+        showMsg(errText('gen', r));
+      });
+    });
+  }
+  function b64Blob(b64, mime) {
     try {
-      // 不設 Content-Type：瀏覽器自動用 text/plain，跨網域不用預檢（Apps Script 不回應預檢）
-      fetch(API_URL, { method: 'POST', body: body, signal: ctrl ? ctrl.signal : undefined })
-        .then(function (r) { return r.text(); })
-        .then(function (t) {
-          var j = null;
-          try { j = JSON.parse(t); } catch (e) { /* 不是 JSON：多半是 Google 端出錯的網頁 */ }
-          if (j && j.ok === true) end(true, '');
-          else end(false, j ? '試算表回覆：' + (j['錯誤'] || '沒有寫原因') : '回的不是 JSON：' + t.slice(0, 200));
-        })
-        .catch(function (e) { end(false, String(e)); });
-    } catch (e) { end(false, String(e)); }
+      var bin = atob(str(b64)), n = bin.length, u = new Uint8Array(n);
+      for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+      return n ? new Blob([u], { type: mime || 'application/pdf' }) : null;
+    } catch (e) { return null; }
+  }
+  function keepPdf(k, blob) {
+    dropFile(k);
+    files[k] = { blob: blob, mime: 'application/pdf', name: k + '.pdf', label: '', url: URL.createObjectURL(blob) };
+    idbPut(k, files[k]);   // 存進這台電腦：重新整理不用再產生一次
+  }
+  function gotDocs(d) {
+    var p = obj(d['列印檔']), e = obj(d['信封']), pb = b64Blob(p.base64, p.mime), eb = b64Blob(e.base64, e.mime);
+    view = 'screen';
+    if (!pb) { save(); render(); showMsg('產生申請文件沒有成功：雲端服務回的列印檔是空的。\n請再按一次；一直這樣請聯絡 Tomi。'); return; }
+    keepPdf('pdf_print', pb);
+    if (eb) keepPdf('pdf_env', eb); else { dropFile('pdf_env'); idbDel('pdf_env'); }
+    state.out = { '頁數': Number(p['頁數']) || 0, '簽名處': arr(d['簽名處']).map(str), '提醒': arr(d['提醒']).map(str),
+      '已存雲端': d['已存雲端'] !== false };   // 沒存進雲端：列印站看不到，手機的列印頁就不叫她去列印站
+    pdfLost = false;
+    go(PRINT);
+  }
+
+  // ---------- 結束、下一位學員、回確認頁（都要再按一次確定） ----------
+  function ask(kind) {
+    var el = document.getElementById('ask');
+    if (!el) return;
+    var res = str(J()['結果']) || '要確認', t;
+    if (kind === 'next') t = ['文件都印好、學員都簽好名了嗎？\n按「確定」會清掉這台電腦上這位學員的資料（照片、勞保、申請文件）。', '確定，下一位學員', '還沒，回去'];
+    else if (kind === 'end') t = ['確定' + (res === '不符合' ? '' : '先') + '結束嗎？\n資料已經存在 Tomi 那邊（編號 ' + state.rid + '，狀態「' + res + '」）' +
+      (res === '不符合' ? '。' : '，Tomi 會處理。這一頁改的地方不會存。') + '\n按「確定」會清掉這台電腦上這位學員的資料。', '確定，換下一位學員', '不要，回去'];
+    else t = ['回確認頁改的話，要重新讀取一次（大約 30 秒）。\n這一頁改的地方不會留著。', '確定，回確認頁', '不要，留在這裡'];
+    el.innerHTML = '<div class="box warn"><p>' + escBr(t[0]) + '</p>' +
+      '<button type="button" class="btn" data-act="askNo">' + esc(t[2]) + '</button>' +
+      '<button type="button" class="btn btn-danger" data-act="askYes" data-k="' + kind + '">' + esc(t[1]) + '</button></div>';
+    scrollToEl(el);
+  }
+  function askYes(kind) {
+    if (kind !== 'reedit') { doRestart('上一位學員的資料已經從這台電腦清掉了。'); return; }
+    state.rid = 0; state.read = null; state.fix = null; state.out = null; state.sheet = '';
+    go(SUBMIT);
   }
 
   // ---------- 重新填寫（要再按一次確定） ----------
@@ -952,7 +1990,8 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     Object.keys(files).forEach(dropFile);
     state = fresh();
     view = 'screen';
-    confirmChecked = false; working = ''; backTo = 0;
+    confirmChecked = false; working = ''; docsLost = 0; pdfLost = false;
+    batches = null; batchErr = ''; batchGone = '';
     notice = msg || '';
     go(0);
   }
@@ -965,7 +2004,8 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     }
     return null;
   }
-  var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, wipe: 1 };
+  var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, edit: 1, batch: 1, gen: 1, codeOk: 1, endAsk: 1, nextAsk: 1, reeditAsk: 1,
+    station: 1, stPrint: 1 };
 
   app.addEventListener('click', function (e) {
     var el = actEl(e.target);
@@ -980,16 +2020,42 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
       case 'back': onBack(); break;
       case 'chk': onChk(el); break;
       case 'send': onSubmit(); break;
-      case 'unfile': unfile(); break;
-      case 'wipe': doRestart('這支手機上的資料和照片都清掉了。'); break;
+      case 'edit': state.back = SUBMIT; go(Number(el.getAttribute('data-q'))); break;
+      case 'undoc': undoc(el.getAttribute('data-k')); break;
+      case 'batch': onBatch(Number(el.getAttribute('data-i'))); break;
+      case 'reloadBatches': loadBatches(); render(); break;
+      case 'code': askCode('change'); break;
+      case 'codeOk': onCodeOk(); break;
+      case 'codeCancel': view = codeBack; render(); break;
+      case 'gen': onGen(); break;
+      case 'print': printPdf(el.getAttribute('data-k')); break;
+      case 'toReview': go(REVIEW); break;
+      case 'endAsk': ask('end'); break;
+      case 'nextAsk': ask('next'); break;
+      case 'reeditAsk': ask('reedit'); break;
+      case 'askNo': document.getElementById('ask').innerHTML = ''; break;
+      case 'askYes': askYes(el.getAttribute('data-k')); break;
       case 'restart': askRestart(); break;
       case 'restartNo': cancelRestart(); break;
       case 'restartYes': doRestart(); break;
+      case 'station': openStation(); break;
+      case 'stReload': stWake(true); break;
+      case 'stPrint': stPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind')); break;
+      case 'stExit': closeStation(); break;
     }
   });
 
   app.addEventListener('input', function (e) {
-    var t = e.target;
+    var t = e.target, fp = t && t.getAttribute && t.getAttribute('data-fix');
+    if (fp && state.fix) {   // 核對頁改欄位
+      setFix(fp, t.value);
+      save();
+      autoGrow(t);
+      paintFix(fp);
+      clearErr();
+      hideMsg();
+      return;
+    }
     var f = t && t.getAttribute && t.getAttribute('data-field');
     if (!f) return;
     state.a[f] = t.value;
@@ -1001,20 +2067,28 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     if (q && b) b.textContent = nextLabel(q);
   });
 
-  // 拍好照片、選好檔案
+  // 拍好照片、選好檔案；核對頁的日期、字號打完整理格式
   app.addEventListener('change', function (e) {
-    var t = e.target, q = t && t.getAttribute && qById(t.getAttribute('data-file') || '');
+    var t = e.target, fp = t && t.getAttribute && t.getAttribute('data-fix');
+    if (fp && state.fix) {
+      var v = normFix(fp, t.value);
+      if (v !== t.value) { t.value = v; setFix(fp, v); save(); paintFix(fp); }
+      return;
+    }
+    var q = t && t.getAttribute && qById(t.getAttribute('data-file') || '');
     if (!q || !t.files || !t.files[0]) return;
-    var file = t.files[0];
-    try { t.value = ''; } catch (err) { /* 舊瀏覽器 */ }   // 清掉，同一張再選一次也會觸發
+    var list = Array.prototype.slice.call(t.files);
+    try { t.value = ''; } catch (err) { /* 舊瀏覽器 */ }   // 清掉，同一個檔再選一次也會觸發
     hideMsg();
-    takeFile(q, file);
+    if (q.type === 'docs') takeDocs(q, list);
+    else takeFile(q, list[0]);
   });
 
-  // 單行輸入框按 Enter＝下一題（打中文選字時不算）
+  // 單行輸入框按 Enter＝下一題；通關碼按 Enter＝確定（打中文選字時不算）
   app.addEventListener('keydown', function (e) {
     if ((e.key === 'Enter' || e.keyCode === 13) && !e.isComposing && e.keyCode !== 229) {
       var t = e.target;
+      if (t && t.id === 'f_code') { e.preventDefault(); if (!busy) onCodeOk(); return; }
       if (t && t.tagName === 'INPUT' && t.getAttribute('data-field')) {
         e.preventDefault();
         if (Date.now() - shownAt >= GUARD_MS) onNext();
@@ -1022,15 +2096,38 @@ label.btn,.alt{cursor:pointer;-webkit-user-select:none;user-select:none}
     }
   });
 
+  // 等雲端服務的時候不小心按到重新整理、關掉：先問一下
+  window.addEventListener('beforeunload', function (e) {
+    if (view === 'wait') { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // 列印站：有人在用就算醒著；切回這個分頁馬上更新；網址改成（或按上一頁離開）#列印站 就進出列印站
+  ['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel'].forEach(function (t) { document.addEventListener(t, stWake, { passive: true }); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) stWake(true); });
+  window.addEventListener('hashchange', function () {
+    var inStation = view === 'station' || (view === 'code' && codeBack === 'station');
+    if (atStation() && !inStation && view !== 'wait') openStation();
+    else if (!atStation() && inStation) closeStation();
+  });
+
   // ---------- 開始 ----------
+  loadCode();
   var saved = load();
-  if (saved) {
-    state = saved;
-    if (state.pos >= 1 && !state.sent) view = 'welcome';   // 送出過的直接顯示「送出成功」
-  }
   OLD_KEYS.forEach(function (k) { try { window.localStorage.removeItem(k); } catch (e) { /* 略過 */ } });
-  if (!saved || state.sent) { idbClear(); render(); }   // 沒有填到一半的：手機裡如果還留著舊照片，清掉
-  else restoreFiles(render);                             // 填到一半的：先把照片拿回來再顯示
+  if (saved) state = saved;
+  var going = state.pos >= 1;
+  function start() {
+    view = going ? 'welcome' : 'screen';
+    if (codeMissing()) { codeWhy = 'first'; codeBack = view; view = 'code'; }
+    render();
+  }
+  function begin() {
+    begun = true;
+    if (!going) { idbClear(); start(); }   // 沒有做到一半的：這台電腦裡如果還留著舊檔，清掉
+    else restoreFiles(start);              // 做到一半的：先把照片、檔案拿回來再顯示
+  }
+  if (atStation()) openStation();          // 列印站的書籤：做到一半的報名等離開列印站再接
+  else begin();
 })();
 </script>
 </body>
