@@ -216,8 +216,9 @@ textarea.inp{resize:vertical}
 (function () {
   'use strict';
 
-  var STORE_KEY = 'gov_subsidy.women_ai_form.v4';   // v4：現場版（勞保多檔、梯次、核對、列印），舊版存的答案不接著用
-  var OLD_KEYS = ['gov_subsidy.women_ai_form.v1', 'gov_subsidy.women_ai_form.v2', 'gov_subsidy.women_ai_form.v3'];   // 打開就清掉
+  var STORE_KEY = 'gov_subsidy.women_ai_form.v5';   // v5（10/7）：拿掉 6 題資格題，題目位置變了；v4＝現場版（勞保多檔、梯次、核對、列印）。舊版存的答案不接著用
+  var OLD_KEYS = ['gov_subsidy.women_ai_form.v1', 'gov_subsidy.women_ai_form.v2', 'gov_subsidy.women_ai_form.v3',
+    'gov_subsidy.women_ai_form.v4'];   // 打開就清掉
   var DB_NAME = 'gov_subsidy.women_ai_form', DB_STORE = 'files';   // IndexedDB：照片、勞保檔、申請文件
   var HEADER = '【自主訓練報名資料表 v3】';          // 資料表文字沿用 v3（規格第 1 節），不改
   var EMPTY = '（未填）';
@@ -237,9 +238,8 @@ textarea.inp{resize:vertical}
   // ---------- 題目 ----------
   // out＝輸出標籤（照規格第 1 節，不可改字；確認頁也用它當名稱）；沒有 out 的（拍照、勞保、梯次）不進資料表文字
   // 選項：t＝畫面上的字；n＝畫面上的括號補充（不輸出）；o＝輸出用字（沒寫就用 t）；show＝確認頁用字；
-  //       ex＝選了就清掉其他選項；f＝選了要接著填（type text／note）
+  //       ex＝選了就清掉其他選項；f＝選了要接著填（type text）
   function other() { return { t: '其他', f: { type: 'text', label: '請寫一下是什麼' } }; }
-  var UNION = { type: 'text', label: '叫什麼名字？', hint: '不知道可以不填' };
 
   var QS = [
     // 拍照：檔案存在這台電腦的 IndexedDB；fileKind＝送出時的「種類」
@@ -280,21 +280,7 @@ textarea.inp{resize:vertical}
         { t: '做家事或照顧其他家人', o: '做家事(含照顧其他家人)' },
         other()
       ] },
-    { id: 'uninsured', type: 'single', out: '離職後沒保勞保的工作',
-      title: '離職後，有做過沒保勞保的工作嗎？', hint: '打工、幫家裡店裡忙有領錢都算',
-      opts: ['沒有', { t: '有', f: { type: 'text', label: '大概從什麼時候做到什麼時候？', hint: '例如：113 年 5 月到 113 年 8 月' } }] },
-    { id: 'working', type: 'single', out: '現在有沒有工作',
-      title: '現在有沒有在工作？', hint: '打工、兼差也算',
-      opts: ['沒有', { t: '有', f: { type: 'note', text: '有工作的話可能不符合資格，老師會再跟你確認。你可以先繼續填。' } }] },
-    { id: 'owner', type: 'single', out: '公司負責人或董事',
-      title: '有當公司或商號的負責人嗎？', hint: '家族公司掛名、當董事也算', opts: ['沒有', '有', '不確定'] },
-    { id: 'union', type: 'single', out: '工會漁會農會',
-      title: '現在有參加工會、漁會或農會嗎？',
-      opts: ['沒有', { t: '職業工會', f: UNION }, { t: '漁會', f: UNION }, { t: '農會', f: UNION }] },
-    { id: 'otherAid', type: 'single', out: '其他政府訓練補助',
-      title: '這段時間有領其他政府上課補助嗎？', opts: ['沒有', '有'] },
-    { id: 'pastAward', type: 'single', out: '以前領過自主訓練獎勵',
-      title: '以前領過「自主訓練獎勵」嗎？', opts: ['沒有', '有'] },
+    // 資格題（沒保勞保的工作、現在有沒有工作、負責人、工會漁會農會、其他補助、領過獎勵）2026-10-07 起不問：報名前已先篩過
     { id: 'digital', type: 'single', out: '手機電腦程度',
       title: '手機、電腦用得怎麼樣？', opts: ['不太會', { t: '會用 LINE、拍照', o: '基本操作' }, '很熟'] },
     { id: 'usedAi', type: 'single', out: '用過AI',
@@ -339,7 +325,7 @@ textarea.inp{resize:vertical}
     { id: 'batch', type: 'batch', short: '上課梯次', title: '選上課梯次', hint: '只能選「開放報名」的梯次' }
   ];
 
-  var N = QS.length;      // 37 題（身分證正面、反面＋33 題＋勞保資料＋梯次）
+  var N = QS.length;      // 31 題（身分證正面、反面＋27 題＋勞保資料＋梯次）
   var SUBMIT = N + 1;     // 確認頁
   var REVIEW = N + 2;     // 核對頁（現場人員）
   var PRINT = N + 3;      // 列印頁
@@ -419,7 +405,7 @@ textarea.inp{resize:vertical}
   // rid、sheet、read、fix＝讀取後的編號、送出的資料表、讀取結果、核對時改的；out＝產生好的申請文件資訊；wait＝等雲端服務時關掉的是哪一步；
   // pend＝讀取失敗但資料已經存進試算表的編號（再按一次要帶著，雲端服務才不會多存一列）
   function fresh() {
-    return { v: 4, pos: 0, back: 0, had: {}, a: {}, docs: [], batch: null, rid: 0, sheet: '', read: null, fix: null, out: null, wait: '', pend: 0 };
+    return { v: 5, pos: 0, back: 0, had: {}, a: {}, docs: [], batch: null, rid: 0, sheet: '', read: null, fix: null, out: null, wait: '', pend: 0 };
   }
   function sanitize(d) {
     var s = fresh();
@@ -556,7 +542,7 @@ textarea.inp{resize:vertical}
       if (o.f && o.f.type === 'text') {
         var t = followText(q);
         if (o.f.raw) return t || EMPTY;                  // 通訊地址：直接寫地址
-        return outT(o) + '（' + (t || '未填') + '）';    // 有（時間）、職業工會（名稱）、其他（說明）
+        return outT(o) + '（' + (t || '未填') + '）';    // 其他（說明）
       }
       return outT(o);
     }
@@ -1463,17 +1449,13 @@ textarea.inp{resize:vertical}
     var box = document.getElementById('follow');
     if (!box) return false;
     var f = activeFollow(q);
-    var key = f ? f.type + '|' + (f.label || f.text) : '';
+    var key = f ? f.type + '|' + f.label : '';
     if (key === followKey) return false;
     followKey = key;
     if (!f) { box.innerHTML = ''; return false; }
-    if (f.type === 'note') {
-      box.innerHTML = '<div class="box warn"><p>' + esc(f.text) + '</p></div>';
-    } else {
-      box.innerHTML = '<label class="flabel" for="f_' + q.id + '_t">' + esc(f.label) + '</label>' +
-        (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '') + fieldHTML(q.id + '_t', f, '');
-      growAll();
-    }
+    box.innerHTML = '<label class="flabel" for="f_' + q.id + '_t">' + esc(f.label) + '</label>' +
+      (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '') + fieldHTML(q.id + '_t', f, '');
+    growAll();
     return true;
   }
 
