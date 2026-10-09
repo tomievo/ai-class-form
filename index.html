@@ -216,9 +216,9 @@ textarea.inp{resize:vertical}
 (function () {
   'use strict';
 
-  var STORE_KEY = 'gov_subsidy.women_ai_form.v5';   // v5（10/7）：拿掉 6 題資格題，題目位置變了；v4＝現場版（勞保多檔、梯次、核對、列印）。舊版存的答案不接著用
+  var STORE_KEY = 'gov_subsidy.women_ai_form.v6';   // v6（10/9）：加一題「最拿手的事」，題目位置變了；v5（10/7）：拿掉 6 題資格題；v4＝現場版（勞保多檔、梯次、核對、列印）。舊版存的答案不接著用
   var OLD_KEYS = ['gov_subsidy.women_ai_form.v1', 'gov_subsidy.women_ai_form.v2', 'gov_subsidy.women_ai_form.v3',
-    'gov_subsidy.women_ai_form.v4'];   // 打開就清掉
+    'gov_subsidy.women_ai_form.v4', 'gov_subsidy.women_ai_form.v5'];   // 打開就清掉
   var DB_NAME = 'gov_subsidy.women_ai_form', DB_STORE = 'files';   // IndexedDB：照片、勞保檔、申請文件
   var HEADER = '【自主訓練報名資料表 v3】';          // 資料表文字沿用 v3（規格第 1 節），不改
   var EMPTY = '（未填）';
@@ -237,9 +237,12 @@ textarea.inp{resize:vertical}
 
   // ---------- 題目 ----------
   // out＝輸出標籤（照規格第 1 節，不可改字；確認頁也用它當名稱）；沒有 out 的（拍照、勞保、梯次）不進資料表文字
+  // plan＝答案會寫進計畫書：題目下面多一行小字提醒現場人員（只在畫面上，不輸出）
   // 選項：t＝畫面上的字；n＝畫面上的括號補充（不輸出）；o＝輸出用字（沒寫就用 t）；show＝確認頁用字；
   //       ex＝選了就清掉其他選項；f＝選了要接著填（type text）
   function other() { return { t: '其他', f: { type: 'text', label: '請寫一下是什麼' } }; }
+  // 想做的工作：說明在畫面上看得到，也一起輸出成「名稱（說明）」（寫計畫書的 AI 靠說明知道那份工作要做什麼）；o＝輸出用的名稱
+  function job(t, n, o) { return { t: t, n: n, o: (o || t) + '（' + n + '）' }; }
 
   var QS = [
     // 拍照：檔案存在這台電腦的 IndexedDB；fileKind＝送出時的「種類」
@@ -262,11 +265,14 @@ textarea.inp{resize:vertical}
     { id: 'skill', type: 'multi', out: '專長',
       title: '你有哪些專長？', opts: ['電腦文書', { t: '煮菜', o: '烹飪' }, '照顧小孩或長輩', '銷售服務', '手工藝', '記帳會計', '美容美髮', '開車', '外語', other()] },
     { id: 'jobTitle', type: 'single', out: '最近一份工作職稱',
-      title: '最近一份工作是什麼職位？', opts: ['作業員', '門市人員', '餐飲服務', '行政文書', '會計', '業務', { t: '保母、幼兒園老師', o: '保母或教保' }, '照顧服務員', '清潔', '自己做生意', other()] },
-    { id: 'duty', type: 'multi', out: '最近一份工作內容',
+      title: '最近一份工作是什麼職位？', opts: ['作業員', '理貨員', '門市人員', '收銀員', '餐飲服務', '廚房助手', '櫃台人員', '行政文書', '會計', '業務',
+        { t: '保母、幼兒園老師', o: '保母或教保' }, '照顧服務員', '清潔', '房務人員', '美容美髮', '農務', '自己做生意', other()] },
+    { id: 'duty', type: 'multi', out: '最近一份工作內容', plan: true,
       title: '那份工作主要做什麼？', opts: ['操作機器或生產', '品管包裝', '收銀結帳', '招呼客人', '整理資料文書', '接電話', '記帳', '帶小孩或照顧', '打掃', '送貨', other()] },
     { id: 'pastJobs', type: 'multi', out: '以前做過的工作',
       title: '以前還做過哪些工作？', opts: ['工廠', '門市銷售', '餐飲', '行政文書', '會計', '照顧服務', '教育幼教', '美容美髮', '清潔', '自己做生意', { t: '只做過最近那份', o: '沒有其他', ex: true }] },
+    { id: 'best', type: 'text', lines: true, out: '最拿手的事', plan: true,
+      title: '以前工作，最拿手、最常被稱讚的一件事？', hint: '選填，沒有可以跳過。請她用自己的話說一句，例如：記得熟客愛吃什麼' },
     { id: 'leave', type: 'multi', out: '離開原因',
       title: '為什麼離開上一份工作？', opts: [
         { t: '公司裁員或關門', o: '工作場所業務緊縮或歇業' },
@@ -288,12 +294,27 @@ textarea.inp{resize:vertical}
     { id: 'why', type: 'multi', out: '想上課的原因',
       title: '為什麼想上這堂 AI 課？', opts: [{ t: '準備回去上班', o: '準備再就業' }, { t: '跟上時代', o: '跟上數位趨勢' }, '學會用 AI 工具',
         { t: '把電腦文書學好', o: '提升文書能力' }, '找資料', '寫履歷自傳', '做簡報', { t: '用臉書、LINE 做宣傳', o: '行銷社群' }, other()] },
-    { id: 'aiHelp', type: 'multi', out: '希望AI幫忙',
+    { id: 'aiHelp', type: 'multi', out: '希望AI幫忙', plan: true,
       title: '希望 AI 幫你做什麼？', opts: ['寫 LINE 訊息回覆客人', '查資料', { t: '排行程、列清單', o: '排行程列清單' }, '把錄音整理成重點', '翻譯外文',
-        { t: '做卡片、小海報', o: '做卡片小海報' }, { t: '拍照問問題', n: '看懂公告說明書' }, '寫履歷自傳', other()] },
-    { id: 'wantJob', type: 'multi', max: 2, out: '想做的工作',
-      title: '之後想做什麼工作？', opts: ['行政文書', '櫃台接待', '門市銷售', '餐飲服務', { t: '客服', n: '電話、LINE' }, '照顧服務', '清潔',
-        { t: '網拍小幫手', o: '電商小幫手' }, '自己開店或接案', other()] },
+        { t: '做卡片、小海報', o: '做卡片小海報' }, { t: '拍照問問題', n: '看懂公告說明書' }, '寫履歷自傳', '幫我找職缺資料', '寫訊息聯絡老闆', other()] },
+    { id: 'wantJob', type: 'multi', max: 2, out: '想做的工作', plan: true,
+      title: '之後想做什麼工作？', opts: [
+        job('門市銷售', '介紹商品、結帳、整理貨架'),
+        job('收銀員', '結帳、找零、回答客人問題'),
+        job('餐飲外場', '點餐、送餐、收拾桌面'),
+        job('餐飲內場', '備料、洗切、簡單烹調'),
+        job('櫃台接待', '診所、飯店、公司櫃台：接待、接電話、登記'),
+        job('客服', '接電話、回 LINE 訊息、處理客人問題'),
+        job('行政文書', '打字、整理資料、處理文件'),
+        job('照顧服務', '長照、居家服務：陪伴、協助生活起居'),
+        job('保母或課後照顧', '照顧小孩、陪寫功課'),
+        job('清潔或房務', '辦公室、大樓、飯店民宿房間'),
+        job('理貨或包裝', '賣場、倉庫：上架、包裝、點貨'),
+        job('網拍小幫手', '商品上架、回覆買家訊息', '電商小幫手'),
+        job('社區據點助理', '帶長輩活動、聯絡長輩'),
+        '自己開店或接案',
+        other()
+      ] },
     { id: 'place', type: 'text', out: '希望上班地點',
       title: '希望在哪裡上班？', hint: '例如：岡山區、住家附近' },
     { id: 'commute', type: 'single', out: '通勤時間',
@@ -314,8 +335,8 @@ textarea.inp{resize:vertical}
       title: '上課那天，家裡怎麼安排？', opts: ['家人支持', '時間可以自己安排', '有人幫忙照顧'] },
     { id: 'care', type: 'multi', out: '上班後家裡',
       title: '開始上班後，家裡誰照顧？', opts: [{ t: '不需要照顧家人', ex: true }, '家人可以幫忙', '安親班或日照中心', '上班時間可以配合'] },
-    { id: 'hardest', type: 'multi', out: '最大困難',
-      title: '回去上班，最大的困難是？', opts: ['年齡', '太久沒工作', '手機電腦不熟', '缺乏新技能', '要照顧家人', '交通不方便', other()] },
+    { id: 'hardest', type: 'multi', out: '最大困難', plan: true,
+      title: '回去上班，最大的困難是？', opts: ['年齡', '太久沒工作', '手機電腦不熟', '缺乏新技能', '要照顧家人', '交通不方便', '不知道自己適合什麼工作', other()] },
     { id: 'note', type: 'text', lines: true, out: '其他補充',
       title: '還有什麼想補充的嗎？', hint: '沒有的話可以不填' },
     // 勞保資料（v4 必填、1–5 個，PDF 原檔、照片截圖縮小）：檔案存在這台電腦的 IndexedDB
@@ -325,7 +346,7 @@ textarea.inp{resize:vertical}
     { id: 'batch', type: 'batch', short: '上課梯次', title: '選上課梯次', hint: '只能選「開放報名」的梯次' }
   ];
 
-  var N = QS.length;      // 31 題（身分證正面、反面＋27 題＋勞保資料＋梯次）
+  var N = QS.length;      // 32 題（身分證正面、反面＋28 題＋勞保資料＋梯次）
   var SUBMIT = N + 1;     // 確認頁
   var REVIEW = N + 2;     // 核對頁（現場人員）
   var PRINT = N + 3;      // 列印頁
@@ -405,7 +426,7 @@ textarea.inp{resize:vertical}
   // rid、sheet、read、fix＝讀取後的編號、送出的資料表、讀取結果、核對時改的；out＝產生好的申請文件資訊；wait＝等雲端服務時關掉的是哪一步；
   // pend＝讀取失敗但資料已經存進試算表的編號（再按一次要帶著，雲端服務才不會多存一列）
   function fresh() {
-    return { v: 5, pos: 0, back: 0, had: {}, a: {}, docs: [], batch: null, rid: 0, sheet: '', read: null, fix: null, out: null, wait: '', pend: 0 };
+    return { v: 6, pos: 0, back: 0, had: {}, a: {}, docs: [], batch: null, rid: 0, sheet: '', read: null, fix: null, out: null, wait: '', pend: 0 };
   }
   function sanitize(d) {
     var s = fresh();
@@ -855,6 +876,7 @@ textarea.inp{resize:vertical}
     var h = topHTML(state.pos);
     h += '<h2 class="qt" id="qt" tabindex="-1">' + esc(q.title) + '</h2>';
     if (q.hint) h += '<p class="hint">' + esc(q.hint) + '</p>';
+    if (q.plan) h += '<p class="hint">這題會寫進計畫書，請帶她想清楚</p>';   // 給現場人員看，不輸出
     if (q.type === 'single') h += '<p class="how">點一個答案</p>';
     if (q.type === 'multi') h += '<p class="how">' + (q.max ? '最多選 ' + q.max + ' 個' : '可以選好幾個') + '</p>';
     if (q.type === 'photo' && !files[q.id]) h += '<p class="how">放在深色的桌面上<br>手機拿平，從正上方拍<br>靠近一點，四個角都要拍到<br>字要清楚，不要反光</p>';
