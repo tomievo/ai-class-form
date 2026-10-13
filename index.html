@@ -25,7 +25,7 @@ var 需要通關碼 = true;
   - 流程＝docs/規格_現場報名雲端版.md 第 0 節；API＝第 2 節；資料格式＝第 3 節
   - 資料表文字＝docs/規格_小幫手資料格式.md 第 1 節（v3 原樣）；改題目或標籤要同步改規格
   - 答案、讀取結果、核對時改的地方存在這台電腦（localStorage）；身分證照片、勞保檔、申請文件 PDF 存在 IndexedDB。
-    重新整理可以接著做；按「下一位學員」「結束」「今天印不了，先換下一位」或「重新填寫」才清掉（現場通關碼留著）
+    重新整理可以接著做；按「下一位學員」「今天印不了，先換下一位」或「重新填寫」才清掉（現場通關碼留著）
   - 列印站（網址加 #列印站，店裡接印表機的電腦設成書籤）：學員在自己手機上產好文件，現場人員在這裡點她的名字列印。
     手機、平板的列印頁會叫她去列印站；列印站拿到的 PDF 只放在記憶體，不存進這台電腦
 -->
@@ -218,13 +218,15 @@ textarea.inp{resize:vertical}
 (function () {
   'use strict';
 
-  var STORE_KEY = 'gov_subsidy.women_ai_form.v6';   // v6（10/9）：加一題「最拿手的事」，題目位置變了；v5（10/7）：拿掉 6 題資格題；v4＝現場版（勞保多檔、梯次、核對、列印）。舊版存的答案不接著用
-  // 10/11 不換 key：兩題改字、職稱多一個選項、核對頁送新格式，題數和位置都沒變——存著的答案照用，核對頁的舊格式由 fixShape 轉
+  var STORE_KEY = 'gov_subsidy.women_ai_form.v7';   // v7（10/12）：職稱選「沒在公司上過班」多問三題、勞保那一步多一顆按鈕、核對頁格式改了，題目位置變了；
+  // v6（10/9）：加一題「最拿手的事」；v5（10/7）：拿掉 6 題資格題；v4＝現場版（勞保多檔、梯次、核對、列印）。舊版存的答案不接著用（不會帶上一位學員的答案）
   var OLD_KEYS = ['gov_subsidy.women_ai_form.v1', 'gov_subsidy.women_ai_form.v2', 'gov_subsidy.women_ai_form.v3',
-    'gov_subsidy.women_ai_form.v4', 'gov_subsidy.women_ai_form.v5'];   // 打開就清掉
+    'gov_subsidy.women_ai_form.v4', 'gov_subsidy.women_ai_form.v5', 'gov_subsidy.women_ai_form.v6'];   // 打開就清掉
   var DB_NAME = 'gov_subsidy.women_ai_form', DB_STORE = 'files';   // IndexedDB：照片、勞保檔、申請文件
   var HEADER = '【自主訓練報名資料表 v3】';          // 資料表文字沿用 v3（規格第 1 節），不改
   var EMPTY = '（未填）';
+  var NO_LABOR = '沒有任何勞保、農保紀錄';             // 勞保那一步的按鈕（10/12）
+  var NO_LABOR_LINE = '投保紀錄：' + NO_LABOR;          // 按了按鈕，資料表多這一行（規格 2-2）
   var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
   var GUARD_MS = 400;    // 換畫面後這段時間內的點擊不算（防連點點到下一題）
   var WAIT_MS = { batches: 45000, read: 120000, gen: 240000, recent: 45000, packet: 90000 };   // 讀梯次、讀取資料、產生申請文件、列印站的名單和文件最多等多久，超過當沒成功
@@ -241,11 +243,19 @@ textarea.inp{resize:vertical}
   // ---------- 題目 ----------
   // out＝輸出標籤（照規格第 1 節，不可改字；確認頁也用它當名稱）；沒有 out 的（拍照、勞保、梯次）不進資料表文字
   // plan＝答案會寫進計畫書：題目下面多一行小字提醒現場人員（只在畫面上，不輸出）
+  // title 可以是陣列：一段一段不拆開，手機上只在段和段之間換行（長輩讀到一半斷行容易看錯）
+  // when＝條件題：when() 是 true 才問、才輸出、確認頁才列（題號只算要問的）；ngTitle、ngShort＝「沒在公司上過班」的人看到的題目、確認頁名稱
+  // type range＝兩格（從、到），存在 a[id_from]、a[id_to]，輸出兩行（out、out2）
   // 選項：t＝畫面上的字；n＝畫面上的括號補充（不輸出）；o＝輸出用字（沒寫就用 t）；show＝確認頁用字；
   //       ex＝選了就清掉其他選項；f＝選了要接著填（type text）
   function other() { return { t: '其他', f: { type: 'text', label: '請寫一下是什麼' } }; }
   // 想做的工作：說明在畫面上看得到，也一起輸出成「名稱（說明）」（寫計畫書的 AI 靠說明知道那份工作要做什麼）；o＝輸出用的名稱
   function job(t, n, o) { return { t: t, n: n, o: (o || t) + '（' + n + '）' }; }
+  // 職稱：最後一家公司那題、沒保勞保的最後一次工作那題共用
+  var TITLES = ['作業員', '理貨員', '門市人員', '收銀員', '餐飲服務', '廚房助手', '櫃台人員', '行政文書', '會計', '業務',
+    { t: '保母、幼兒園老師', o: '保母或教保' }, '照顧服務員', '清潔', '房務人員', '美容美髮', '農務', '自己做生意'];
+  var NO_CO = '沒在公司上過班';   // 勞保上沒有公司（只保工會、農保、查無資料）：判讀不當職稱，接著問沒保勞保的最後一次工作（10/12）
+  function noCompany() { return state.a.jobTitle === NO_CO; }
 
   var QS = [
     // 拍照：檔案存在這台電腦的 IndexedDB；fileKind＝送出時的「種類」
@@ -269,17 +279,26 @@ textarea.inp{resize:vertical}
       title: '你有哪些專長？', opts: ['電腦文書', { t: '煮菜', o: '烹飪' }, '照顧小孩或長輩', '銷售服務', '手工藝', '記帳會計', '美容美髮', '開車', '外語', other()] },
     // 10/11 起問「最後一家公司」（前輩的寫法：只有公司保的勞保算工作，工會、農會、漁會不算）；out 照舊（規格第 1 節）
     { id: 'jobTitle', type: 'single', out: '最近一份工作職稱', short: '最後一家公司的職位',
-      title: '最後一家公司的工作，是什麼職位？', hint: '看勞保上最後一家公司；工會、農會、漁會不算', opts: ['作業員', '理貨員', '門市人員', '收銀員', '餐飲服務', '廚房助手', '櫃台人員', '行政文書', '會計', '業務',
-        { t: '保母、幼兒園老師', o: '保母或教保' }, '照顧服務員', '清潔', '房務人員', '美容美髮', '農務', '自己做生意',
-        '沒在公司上過班', other()] },   // 沒在公司上過班：勞保上沒有公司（只保工會、農保或查無資料），判讀不當職稱
+      title: '最後一家公司的工作，是什麼職位？', hint: '看勞保上最後一家公司；工會、農會、漁會不算',
+      opts: TITLES.concat([NO_CO, other()]) },   // 沒在公司上過班：勞保上沒有公司（只保工會、農保或查無資料），判讀不當職稱
+    // 沒在公司上過班的人（10/12 R8）：問沒保勞保的最後一次工作——申請表工作經歷只寫這一列、切結書「自＿至＿有實際工作而未投保」寫起迄。
+    // 四行緊接職稱那行之後（規格_小幫手資料格式 第 1 節）；有公司職稱的人不問、不輸出
+    { id: 'ngJob', type: 'single', out: '沒投保的工作', short: '最後一次工作做什麼', when: noCompany,
+      title: ['最後一次工作，', '做什麼？'], hint: '沒保勞保的也算：\n家庭代工、居家清潔、\n照顧老人、飲料店…',
+      opts: ['家庭代工', '居家清潔', { t: '照顧老人或小孩', n: '有收錢' }].concat(TITLES,
+        [{ t: '其他', f: { type: 'text', req: true, raw: true, label: '請寫一下是做什麼' } }]) },   // 其他：直接輸出她寫的字（是職稱）
+    { id: 'ngWhere', type: 'text', out: '沒投保的工作在哪', short: '在哪裡做', when: noCompany,
+      title: '在哪裡做？', hint: '店名或公司名；沒有就按「跳過這題」' },
+    { id: 'ngWhen', type: 'range', out: '沒投保的工作從', out2: '沒投保的工作到', short: '從什麼時候做到什麼時候', when: noCompany,
+      title: ['從什麼時候', '做到什麼時候？'], hint: '民國 年/月/日，例 100/03/01\n請跟她確認' },
     { id: 'duty', type: 'multi', out: '最近一份工作內容', plan: true,
       title: '那份工作主要做什麼？', opts: ['操作機器或生產', '品管包裝', '收銀結帳', '招呼客人', '整理資料文書', '接電話', '記帳', '帶小孩或照顧', '打掃', '送貨', other()] },
     { id: 'pastJobs', type: 'multi', out: '以前做過的工作',
       title: '以前還做過哪些工作？', opts: ['工廠', '門市銷售', '餐飲', '行政文書', '會計', '照顧服務', '教育幼教', '美容美髮', '清潔', '自己做生意', { t: '只做過最近那份', o: '沒有其他', ex: true }] },
     { id: 'best', type: 'text', lines: true, out: '最拿手的事', plan: true,
       title: '以前工作，最拿手、最常被稱讚的一件事？', hint: '選填，沒有可以跳過。請她用自己的話說一句，例如：記得熟客愛吃什麼' },
-    { id: 'leave', type: 'multi', out: '離開原因', short: '離開那家公司的原因',
-      title: '為什麼離開那家公司？', opts: [
+    { id: 'leave', type: 'multi', out: '離開原因', short: '離開那家公司的原因', ngShort: '離開那份工作的原因',
+      title: '為什麼離開那家公司？', ngTitle: '為什麼離開那份工作？', opts: [
         { t: '公司裁員或關門', o: '工作場所業務緊縮或歇業' },
         { t: '對原本工作不滿意', o: '對原有工作不滿意' },
         { t: '生病或身體不好', o: '傷病或健康不良' },
@@ -344,14 +363,16 @@ textarea.inp{resize:vertical}
       title: '回去上班，最大的困難是？', opts: ['年齡', '太久沒工作', '手機電腦不熟', '缺乏新技能', '要照顧家人', '交通不方便', '不知道自己適合什麼工作', other()] },
     { id: 'note', type: 'text', lines: true, out: '其他補充',
       title: '還有什麼想補充的嗎？', hint: '沒有的話可以不填' },
-    // 勞保資料（v4 必填、1–5 個，PDF 原檔、照片截圖縮小）：檔案存在這台電腦的 IndexedDB
+    // 勞保資料（v4 必填、1–5 個，PDF 原檔、照片截圖縮小）：檔案存在這台電腦的 IndexedDB。
+    // 10/12：從來沒保過勞保、農保的人改按「沒有任何勞保、農保紀錄」（state.noLabor），跟選檔二選一
     { id: 'labor', type: 'docs', fileKind: '勞保資料', title: '上傳勞保資料',
-      hint: '要「勞保(就保、災保)異動查詢」那一頁，只有總覽不夠\n有保農保的，農保那頁也一起選' },
+      hint: '下載「勞保(就保、災保)異動查詢」PDF，只有總覽不夠\n有農保的，\n農保那頁也下載、一起選\n' +
+        '從來沒保過勞保、農保\n（勞保局查無資料）的，\n不用下載，按下面的\n「沒有任何勞保、農保紀錄」' },
     // 選梯次（v4）：到這一題才問雲端服務哪幾梯還能報
     { id: 'batch', type: 'batch', short: '上課梯次', title: '選上課梯次', hint: '只能選「開放報名」的梯次' }
   ];
 
-  var N = QS.length;      // 32 題（身分證正面、反面＋28 題＋勞保資料＋梯次）
+  var N = QS.length;      // 35 題（身分證正面、反面＋31 題＋勞保資料＋梯次）；其中 3 題只問「沒在公司上過班」的人，其他人畫面上是共 32 題
   var SUBMIT = N + 1;     // 確認頁
   var REVIEW = N + 2;     // 核對頁（現場人員）
   var PRINT = N + 3;      // 列印頁
@@ -426,12 +447,29 @@ textarea.inp{resize:vertical}
   function outT(o) { return o.o || o.t; }
   function nameOf() { return textOf(qById('name')); }
 
+  // ---------- 條件題（沒在公司上過班的三題） ----------
+  function shown(q) { return !q.when || q.when(); }
+  // 從畫面位置 p 往 d（+1／-1）找第一個要問的題目；超出題目範圍就原樣回傳（0＝開場、N+1＝確認頁）
+  function step(p, d) { while (p >= 1 && p <= N && !shown(QS[p - 1])) p += d; return p; }
+  // 題號、題數只算要問的：前 upTo 個位置裡有幾題要問
+  function shownCount(upTo) { var c = 0; for (var i = 0; i < upTo && i < N; i++) if (shown(QS[i])) c++; return c; }
+  function titleOf(q) { return q.ngTitle && noCompany() ? q.ngTitle : q.title; }
+  function shortOf(q) { return (q.ngShort && noCompany() ? q.ngShort : q.short) || q.out || q.fileKind; }
+  // 答過沒有（從確認頁改職稱、多出來的條件題還沒答 → 先接著問）；文字題按過「跳過這題」也算答過
+  function answered(q) {
+    if (q.type === 'range') return !!(clean(state.a[q.id + '_from']) || clean(state.a[q.id + '_to']));
+    return q.type === 'text' ? typeof state.a[q.id] === 'string' : !!state.a[q.id];
+  }
+  // 從、到：看得懂就整理成 YYY/MM/DD；看不懂（例：只記得年月）照她寫的送（只提醒、不擋）
+  function dateOut(v) { var d = normDate(v); return d || clean(v); }
+  function rangeOf(q) { return [dateOut(state.a[q.id + '_from']), dateOut(state.a[q.id + '_to'])]; }
+
   // ---------- 這位學員的進度存在這台電腦（壞掉也照常填） ----------
-  // pos＝畫面；back＝改完要回去的畫面；docs＝勞保檔清單；batch＝選的梯次；
+  // pos＝畫面；back＝改完要回去的畫面；docs＝勞保檔清單；noLabor＝按了「沒有任何勞保、農保紀錄」（跟 docs 二選一）；batch＝選的梯次；
   // rid、sheet、read、fix＝讀取後的編號、送出的資料表、讀取結果、核對時改的；out＝產生好的申請文件資訊；wait＝等雲端服務時關掉的是哪一步；
   // pend＝讀取失敗但資料已經存進試算表的編號（再按一次要帶著，雲端服務才不會多存一列）
   function fresh() {
-    return { v: 6, pos: 0, back: 0, had: {}, a: {}, docs: [], batch: null, rid: 0, sheet: '', read: null, fix: null, out: null, wait: '', pend: 0 };
+    return { v: 7, pos: 0, back: 0, had: {}, a: {}, docs: [], noLabor: false, batch: null, rid: 0, sheet: '', read: null, fix: null, out: null, wait: '', pend: 0 };
   }
   function sanitize(d) {
     var s = fresh();
@@ -448,10 +486,12 @@ textarea.inp{resize:vertical}
       }
       var t = d.a[q.id + '_t'];
       if (typeof t === 'string') s.a[q.id + '_t'] = t;
+      if (q.type === 'range') ['_from', '_to'].forEach(function (x) { if (typeof d.a[q.id + x] === 'string') s.a[q.id + x] = d.a[q.id + x]; });
       if (d.had && d.had[q.id] === true) s.had[q.id] = true;   // 拍過照（照片本身在 IndexedDB）
     });
     s.docs = arr(d.docs).filter(function (x) { return x && /^doc_[a-z0-9]+_\d+$/.test(str(x.k)) && typeof x.mime === 'string'; })
       .slice(0, MAX_DOCS).map(function (x) { return { k: x.k, label: str(x.label), mime: x.mime, size: Number(x.size) || 0 }; });
+    s.noLabor = d.noLabor === true && !s.docs.length;
     if (d.batch && typeof d.batch === 'object' && typeof d.batch['梯次'] === 'string') s.batch = d.batch;
     var p = Number(d.pos), b = Number(d.back);
     if (p >= 0 && p <= PRINT && Math.floor(p) === p) s.pos = p;
@@ -583,7 +623,14 @@ textarea.inp{resize:vertical}
   }
   function buildText() {
     var lines = [HEADER, '填寫日期：' + today()];
-    QS.forEach(function (q) { if (q.out) lines.push(q.out + '：' + outValue(q)); });
+    QS.forEach(function (q) {
+      if (!q.out || !shown(q)) return;   // 條件題沒問的不輸出
+      if (q.type === 'range') {
+        var r = rangeOf(q);
+        lines.push(q.out + '：' + (r[0] || EMPTY), q.out2 + '：' + (r[1] || EMPTY));
+      } else lines.push(q.out + '：' + outValue(q));
+    });
+    if (state.noLabor) lines.push(NO_LABOR_LINE);   // 最後一題之後、本人確認之前（雲端看到這行就不要勞保檔）
     lines.push('本人確認：以上都是真實狀況');
     return lines.join('\n');
   }
@@ -595,9 +642,11 @@ textarea.inp{resize:vertical}
       return f && f.url ? '<img class="mini" src="' + esc(f.url) + '" alt="' + esc(q.fileKind) + '的照片">' : '（還沒拍）';
     }
     if (q.type === 'docs') {
+      if (state.noLabor) return esc(NO_LABOR + '（現場點選）');
       return state.docs.length ? state.docs.map(function (x, i) { return esc((i + 1) + '. ' + x.label); }).join('<br>') : '（還沒上傳）';
     }
     if (q.type === 'batch') return state.batch ? batchLines(state.batch) : '（還沒選）';
+    if (q.type === 'range') { var r = rangeOf(q); return esc('從 ' + (r[0] || EMPTY) + ' 到 ' + (r[1] || EMPTY)); }
     if (q.type === 'text') return esc(textOf(q) || EMPTY);
     if (q.type === 'single') {
       var o = optByT(q, state.a[q.id]);
@@ -626,7 +675,8 @@ textarea.inp{resize:vertical}
     }
     if (q.type === 'docs') {
       if (working === q.id) return '檔案還在處理，請等一下。';
-      if (!state.docs.length) return '勞保資料一定要上傳。\n請按「選擇檔案」。';
+      if (state.noLabor) return '';
+      if (!state.docs.length) return '勞保資料一定要上傳。\n從來沒保過勞保、農保的，按「' + NO_LABOR + '」。';
       var total = 0;
       state.docs.forEach(function (x) { total += x.size; });
       if (total > MAX_TOTAL) return '檔案加起來太大（超過 20MB）。\n請刪掉幾個，或改用 PDF。';
@@ -635,6 +685,10 @@ textarea.inp{resize:vertical}
     if (q.type === 'batch') {
       if (state.batch) return '';
       return batches && !openCount() ? '目前沒有開放報名的梯次。' : '請點一個梯次。';
+    }
+    if (q.type === 'range') {   // 兩格都要寫；日期寫法只提醒、不擋（onNext 的 rangeOdd）
+      if (!clean(state.a[q.id + '_from']) || !clean(state.a[q.id + '_to'])) return '「從」「到」兩格都要寫。\n記不清楚的，寫大概的就好。';
+      return '';
     }
     if (q.type === 'text') {
       var v = textOf(q);
@@ -667,6 +721,7 @@ textarea.inp{resize:vertical}
   var working = '';             // 正在處理檔案的題目 id
   var notice = '';              // 開場頁的一次性提示
   var flash = '';               // 核對頁上方的一次性提示
+  var softOk = '';              // 從、到寫法看不懂時已經提醒過的那組字（同樣的字再按一次就照寫）
   var docsLost = 0, pdfLost = false, docSeq = 0;   // 重新打開時沒拿回來的勞保檔個數、申請文件
   var batches = null, batchErr = null, batchLoading = false, batchGone = '', batchSeq = 0;   // 梯次（batchErr＝沒讀到時雲端的回應）
   var waitKind = '';
@@ -801,9 +856,10 @@ textarea.inp{resize:vertical}
   // ---------- 畫面 ----------
   function topHTML(n) {
     var back = n <= N && state.back >= SUBMIT ? (state.back === REVIEW ? '‹ 回核對頁' : '‹ 回確認頁') : '‹ 上一題';
+    var all = shownCount(N), at = Math.min(shownCount(n), all);   // 只算要問的（條件題沒問的不算）
     var h = '<div class="top"><button type="button" class="back" data-act="back">' + back + '</button>' +
-      '<span class="count">' + (n <= N ? '第 ' + n + ' 題／共 ' + N + ' 題' : '最後一步') + '</span></div>';
-    var pct = Math.round(Math.min(n, N) / N * 100);
+      '<span class="count">' + (n <= N ? '第 ' + at + ' 題／共 ' + all + ' 題' : '最後一步') + '</span></div>';
+    var pct = Math.round((n <= N ? at : all) / all * 100);
     return h + '<div class="bar" aria-hidden="true"><span style="width:' + pct + '%"></span></div>';
   }
 
@@ -821,6 +877,7 @@ textarea.inp{resize:vertical}
     var type = 'text', extra = ' autocomplete="' + (cfg.ac || 'off') + '"';
     if (cfg.kind === 'tel') { type = 'tel'; extra = ' inputmode="tel" autocomplete="tel"'; }
     if (cfg.kind === 'email') { type = 'email'; extra = ' inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false"'; }
+    if (cfg.ph) extra += ' placeholder="' + esc(cfg.ph) + '"';
     return '<input type="' + type + '"' + attrs + extra + ' enterkeyhint="next" value="' + esc(val) + '">';
   }
 
@@ -829,7 +886,9 @@ textarea.inp{resize:vertical}
       (notice ? '<div class="box ok" role="status"><p>' + escBr(notice) + '</p></div>' : '') +
       '<p class="lead">大約 10 分鐘，<span class="nw">大多用點的。</span></p>' +
       '<p class="lead">請先準備好身分證，<span class="nw">一開始要拍照。</span></p>' +
-      '<p class="lead">也要準備勞保資料<span class="nw">（PDF 或截圖）。</span></p>' +
+      '<p class="lead">也要準備勞保資料<span class="nw">（下載的 PDF）。</span></p>' +
+      '<p class="hint">從來沒保過勞保、農保<span class="nw">（勞保局查無資料）</span>的，<span class="nw">不用下載，</span>' +
+      '<span class="nw">上傳那一步按</span><span class="nw">「沒有任何勞保、</span><span class="nw">農保紀錄」。</span></p>' +
       '<p class="lead">資料只用在這次補助申請，<span class="nw">申請完就刪除。</span></p>' +
       '<p class="hint">中途離開沒關係，<span class="nw">下次打開可以接著填。</span></p>' +
       '<button type="button" class="btn" data-act="start">我同意，開始填寫</button>' +
@@ -839,12 +898,13 @@ textarea.inp{resize:vertical}
   }
 
   // 拍過、選過，但檔案沒有留在這台電腦的題號（from ≤ 題號 < to）；沒有就回傳 0
-  // 勞保檔只有要回確認頁（還沒讀取）時才要補；讀取過以後只需要身分證照片（產生申請文件要再送一次）
+  // 勞保檔只有要回確認頁（還沒讀取）時才要補；讀取過以後只需要身分證照片（產生申請文件要再送一次）；
+  // 按了「沒有任何勞保、農保紀錄」的沒有檔可以弄丟
   function lostAt(from, to) {
     for (var p = from; p < to && p <= N; p++) {
       var q = QS[p - 1];
       if (q.type === 'photo' && state.had[q.id] && !files[q.id]) return p;
-      if (q.type === 'docs' && docsLost && to <= SUBMIT) return p;
+      if (q.type === 'docs' && docsLost && !state.noLabor && to <= SUBMIT) return p;
     }
     return 0;
   }
@@ -867,8 +927,8 @@ textarea.inp{resize:vertical}
       msg = [state.wait === 'read' ? '剛剛「送出，讀取資料」還沒做完就關掉了，要再按一次。' : '你上次填到最後一步了。'];
       btn = '接著填';
     } else {
-      msg = ['你上次填到第 ' + p + ' 題。'];
-      btn = '接著填（第 ' + p + ' 題）';
+      msg = ['你上次填到第 ' + shownCount(p) + ' 題。'];
+      btn = '接著填（第 ' + shownCount(p) + ' 題）';
     }
     // 一小句不拆開換行（長輩讀到一半斷行容易看錯）
     return '<h1>重返職場 AI 入門班｜<span class="nw">報名資料表</span></h1>' +
@@ -878,14 +938,14 @@ textarea.inp{resize:vertical}
   }
 
   function questionHTML(q) {
-    var h = topHTML(state.pos);
-    h += '<h2 class="qt" id="qt" tabindex="-1">' + esc(q.title) + '</h2>';
+    var h = topHTML(state.pos), tt = titleOf(q);
+    h += '<h2 class="qt" id="qt" tabindex="-1">' + (isArr(tt) ? tt.map(function (s) { return '<span class="nw">' + esc(s) + '</span>'; }).join('') : esc(tt)) + '</h2>';
     if (q.hint) h += '<p class="hint">' + escBr(q.hint) + '</p>';
     if (q.plan) h += '<p class="hint">這題會寫進計畫書，請帶她想清楚</p>';   // 給現場人員看，不輸出
     if (q.type === 'single') h += '<p class="how">點一個答案</p>';
     if (q.type === 'multi') h += '<p class="how">' + (q.max ? '最多選 ' + q.max + ' 個' : '可以選好幾個') + '</p>';
     if (q.type === 'photo' && !files[q.id]) h += '<p class="how">放在深色的桌面上<br>手機拿平，從正上方拍<br>靠近一點，四個角都要拍到<br>字要清楚，不要反光</p>';
-    if (q.type === 'docs') h += '<p class="how">PDF、截圖、拍照都可以，最多 ' + MAX_DOCS + ' 個</p>';
+    if (q.type === 'docs' && !state.noLabor) h += '<p class="how">可以選好幾個，最多 ' + MAX_DOCS + ' 個</p>';
     if (q.type === 'batch') h += '<p class="how">點一個梯次</p>';
     if (q.type === 'photo') {
       h += fileHTML(q);
@@ -895,6 +955,9 @@ textarea.inp{resize:vertical}
       h += batchHTML();
     } else if (q.type === 'text') {
       h += fieldHTML(q.id, q, 'qt');
+    } else if (q.type === 'range') {   // 兩格：從、到（例子放在格子裡）
+      h += '<label class="flabel" for="f_' + q.id + '_from">從</label>' + fieldHTML(q.id + '_from', { ph: '例 100/03/01' }, '') +
+        '<label class="flabel" for="f_' + q.id + '_to">到</label>' + fieldHTML(q.id + '_to', { ph: '例 105/08/31' }, '');
     } else {
       var role = q.type === 'single' ? 'radio' : 'checkbox';
       h += '<div class="opts ' + q.type + '" role="' + (q.type === 'single' ? 'radiogroup' : 'group') + '" aria-labelledby="qt">';
@@ -926,9 +989,16 @@ textarea.inp{resize:vertical}
     return h;
   }
 
-  // 勞保資料：選好的檔一個一列（可刪），最多 5 個
+  // 勞保資料：選好的檔一個一列（可刪），最多 5 個；下面一顆「沒有任何勞保、農保紀錄」（跟選檔二選一：選了檔就不能按，按了就收起選檔）
+  function noLaborHTML(on, off) {
+    return '<button type="button" class="opt chk" data-act="noLabor" role="checkbox" aria-checked="' + (on ? 'true' : 'false') + '"' + (off ? ' disabled' : '') + '>' +
+      '<span class="mark">' + CHECK + '</span><span class="t"><span class="nw">沒有任何勞保、</span><span class="nw">農保紀錄</span>' +   // 手機上從「、」後面換行
+      (on ? '<span class="sub2">（再按一次取消）</span>' : '') + '</span></button>' +
+      (off ? '<p class="hint">已經選了檔案就不用按</p>' : '');
+  }
   function docsHTML(q) {
     var h = '', n = state.docs.length;
+    if (state.noLabor) return noLaborHTML(true, false);
     if (docsLost) h += '<div class="box warn"><p>有 ' + docsLost + ' 個檔案沒有存到，請再選一次。</p></div>';
     if (n) {
       h += '<ol class="flist">';
@@ -943,11 +1013,11 @@ textarea.inp{resize:vertical}
     if (working === q.id) return h + '<div class="box warn" role="status"><p>檔案處理中，請稍等…</p></div>';
     if (n < MAX_DOCS) {
       h += '<input type="file" id="pick_' + q.id + '" class="vh" accept="application/pdf,.pdf,image/*" multiple data-file="' + q.id + '">' +
-        '<label for="pick_' + q.id + '" class="btn' + (n ? ' btn2' : '') + '">' + (n ? '再加一個檔案' : '選擇檔案（PDF 或照片）') + '</label>';
+        '<label for="pick_' + q.id + '" class="btn' + (n ? ' btn2' : '') + '">' + (n ? '再加一個檔案' : '選擇檔案（PDF）') + '</label>';
     } else {
       h += '<p class="hint">已經 ' + MAX_DOCS + ' 個了。要換的話，先刪除一個。</p>';
     }
-    return h;
+    return h + noLaborHTML(false, n > 0);
   }
 
   // 梯次：一梯一個大按鈕；只有「開放報名」能點
@@ -985,7 +1055,8 @@ textarea.inp{resize:vertical}
     h += '<p class="hint">請和學員一起看一遍。<span class="nw">要改的話，按旁邊的「改」。</span></p>';
     h += '<ol class="list">';
     QS.forEach(function (q, i) {
-      var k = q.short || q.out || q.fileKind;
+      if (!shown(q)) return;   // 條件題沒問的不列
+      var k = shortOf(q);
       h += '<li class="item"><div class="txt"><div class="k">' + esc(k) + '</div><div class="v">' + showHTML(q) + '</div></div>' +
         '<button type="button" class="edit" data-act="edit" data-q="' + (i + 1) + '" aria-label="改' + esc(k) + '">改</button></li>';
     });
@@ -1008,33 +1079,29 @@ textarea.inp{resize:vertical}
   function J() { return obj(R()['判讀']); }
   function IDC() { return obj(R()['身分證']); }
   function LB() { return obj(R()['勞保']); }
-  // 最後一家公司（寫計畫書、唸給她聽要用；超過 5 年就不列在申請表）。10/11 前的判讀沒有這一欄：用工作經歷裡有機構的那一筆
-  function lastCo(j) {
-    var c = obj(j['最後公司']);
-    return str(c['機構']) ? c : obj(arr(j['工作經歷']).filter(function (w) { return str(obj(w)['機構']); })[0]);
-  }
+  // 最後一家公司（寫計畫書、唸給她聽要用）；沒有公司勞保的人是 null（工作經歷那一列是零工，不是公司）
+  function lastCo(j) { return obj(j['最後公司']); }
+  // 沒有公司勞保的人：最後一次工作（沒保勞保的）四格（規格 3-3 判讀.未投保工作、3-4 核對後.未投保工作）
+  var NG_KEYS = ['職稱', '機構', '起', '迄'];
+  function ngOf(v) { var o = {}; v = obj(v); NG_KEYS.forEach(function (k) { o[k] = str(v[k]); }); return o; }
   function fixShape(f) {
     f['勞保'] = obj(f['勞保']);
     f['勞保']['表頭'] = obj(f['勞保']['表頭']);
     f['勞保']['明細'] = arr(f['勞保']['明細']).map(obj);
     f['勞保']['農保明細'] = arr(f['勞保']['農保明細']).map(obj);
-    // 10/11 前存的是「工作經歷職稱」陣列（跟工作經歷同順序）：取第一個不是家管的
-    if (typeof f['最後公司職稱'] !== 'string') {
-      f['最後公司職稱'] = str(arr(f['工作經歷職稱']).map(str).filter(function (s) { return clean(s) && clean(s) !== '家管'; })[0]);
-    }
-    delete f['工作經歷職稱'];
-    f['結婚日期'] = str(f['結婚日期']);   // 勞保上沒有公司的人才填（規格 3-4）
+    f['最後公司職稱'] = str(f['最後公司職稱']);
+    f['未投保工作'] = ngOf(f['未投保工作']);
     return f;
   }
   // 讀取結果 → 可以改的那一份（3-4 的格式）
   function makeFix(rd) {
     var id = obj(rd['身分證']), j = obj(rd['判讀']);
     return fixShape({ '姓名': str(id['姓名']), '身分證字號': str(id['身分證字號']), '出生日期': str(id['出生日期']), '戶籍地址': str(id['戶籍地址']),
-      '通訊地址': str(j['通訊地址']), '郵遞區號': str(j['郵遞區號']), '最後公司職稱': str(lastCo(j)['職稱']), '結婚日期': '',
+      '通訊地址': str(j['通訊地址']), '郵遞區號': str(j['郵遞區號']), '最後公司職稱': str(lastCo(j)['職稱']), '未投保工作': ngOf(j['未投保工作']),
       '勞保': JSON.parse(JSON.stringify(obj(rd['勞保']))) });
   }
   // 欄位路徑：姓名、身分證字號、出生日期、戶籍地址、通訊地址、郵遞區號；lh.<欄>＝勞保表頭；md.<列>.<欄>＝勞保明細；
-  // nb.<列>.<欄>＝農保明細；lastTitle＝最後一家公司的職稱
+  // nb.<列>.<欄>＝農保明細；lastTitle＝最後一家公司的職稱；ng.<欄>＝沒保勞保的最後一次工作（職稱、機構、起、迄）
   function fixGet(path, src) {
     var p = path.split('.');
     if (src) {   // 讀取（或重新判讀）時的原值：看改過沒有
@@ -1042,6 +1109,7 @@ textarea.inp{resize:vertical}
       if (p[0] === 'md') return str(obj(arr(LB()['明細'])[+p[1]])[p[2]]);
       if (p[0] === 'nb') return str(obj(arr(LB()['農保明細'])[+p[1]])[p[2]]);
       if (p[0] === 'lastTitle') return str(lastCo(J())['職稱']);
+      if (p[0] === 'ng') return str(obj(J()['未投保工作'])[p[1]]);
       if (p[0] === '通訊地址' || p[0] === '郵遞區號') return str(J()[p[0]]);
       return str(IDC()[p[0]]);
     }
@@ -1050,6 +1118,7 @@ textarea.inp{resize:vertical}
     if (p[0] === 'md') return str(obj(f['勞保']['明細'][+p[1]])[p[2]]);
     if (p[0] === 'nb') return str(obj(f['勞保']['農保明細'][+p[1]])[p[2]]);
     if (p[0] === 'lastTitle') return str(f['最後公司職稱']);
+    if (p[0] === 'ng') return str(f['未投保工作'][p[1]]);
     return str(f[p[0]]);
   }
   function setFix(path, v) {
@@ -1058,11 +1127,12 @@ textarea.inp{resize:vertical}
     else if (p[0] === 'md') { if (f['勞保']['明細'][+p[1]]) f['勞保']['明細'][+p[1]][p[2]] = v; }
     else if (p[0] === 'nb') { if (f['勞保']['農保明細'][+p[1]]) f['勞保']['農保明細'][+p[1]][p[2]] = v; }
     else if (p[0] === 'lastTitle') f['最後公司職稱'] = v;
+    else if (p[0] === 'ng') f['未投保工作'][p[1]] = v;
     else f[p[0]] = v;
   }
   function normFix(path, v) {
     var k = path.split('.').pop();
-    if (/日期$/.test(k)) { var d = normDate(v); return d === null ? v : d; }
+    if (/日期$/.test(k) || path === 'ng.起' || path === 'ng.迄') { var d = normDate(v); return d === null ? v : d; }
     if (k === '身分證字號') return normId(v);
     if (k === '郵遞區號') return digits(v);
     return v;
@@ -1070,20 +1140,16 @@ textarea.inp{resize:vertical}
   function nows(s) { return str(s).replace(/\s+/g, ''); }
   function hasItem(list, s) { s = nows(s); return list.some(function (x) { return nows(x) === s; }); }
 
-  // 一格欄位：o.ro＝只顯示；o.uc＝AI 看不清楚；o.need＝空的要標「缺」；o.lines＝多行；o.im＝鍵盤；o.ph＝提示
+  // 一格欄位：o.uc＝AI 看不清楚；o.need＝空的要標「缺」（只有缺了做不出文件的五格）；o.lines＝多行；o.im＝鍵盤；o.ph＝提示
   function fixField(path, label, o) {
     o = o || {};
     var v = fixGet(path), id = 'x_' + path.replace(/\./g, '_');
     var cls = 'fl' + (o.uc ? ' uc' : '') + (v !== fixGet(path, true) ? ' chg' : '') + (o.need && !clean(v) ? ' need' : '');
     var h = '<div class="' + cls + '" data-wrap="' + esc(path) + '"' + (o.need ? ' data-need="1"' : '') + '>';
-    if (o.ro) {
-      h += '<span class="fk">' + esc(label) + '</span><span class="fv">' + (v ? esc(v) : '（空白）') + '</span>';
-    } else {
-      h += '<label class="fk" for="' + id + '">' + esc(label) + '</label>';
-      var a = ' id="' + id + '" class="inp" data-fix="' + esc(path) + '" autocomplete="off"' + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '');
-      if (o.lines) h += '<textarea' + a + ' rows="2">' + esc(v) + '</textarea>';
-      else h += '<input type="text"' + a + (o.im ? ' inputmode="' + o.im + '"' : '') + ' value="' + esc(v) + '">';
-    }
+    h += '<label class="fk" for="' + id + '">' + esc(label) + '</label>';
+    var a = ' id="' + id + '" class="inp" data-fix="' + esc(path) + '" autocomplete="off"' + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '');
+    if (o.lines) h += '<textarea' + a + ' rows="2">' + esc(v) + '</textarea>';
+    else h += '<input type="text"' + a + (o.im ? ' inputmode="' + o.im + '"' : '') + ' value="' + esc(v) + '">';
     return h + '<span class="tags">' + (o.uc ? '<span class="tag tuc">AI 看不清楚</span>' : '') +
       '<span class="tag tchg">改過</span><span class="tag tneed">缺，要填</span></span></div>';
   }
@@ -1092,33 +1158,37 @@ textarea.inp{resize:vertical}
     items = arr(items).map(str).filter(Boolean);
     return items.length ? '<ul>' + items.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '';
   }
+  // 只提醒、不擋（10/12）：要確認＝缺了做不出文件（紅框，補好才能產生）；標記＝提醒（黃框，逐條問她，照樣能產生）；都沒有＝綠框
   function verdictHTML(j) {
-    var r = str(j['結果']), marks = arr(j['標記']).length ? '<p>提醒：</p>' + listHTML(j['標記']) : '';
-    if (r === '符合') return '<div class="box ok"><p class="vt">✔ 符合資格</p>' + marks +
-      '<p>資料都對的話，按最下面的「資料都對，產生申請文件」。</p></div>';
-    if (r === '不符合') return '<div class="box err"><p class="vt">✘ 不符合資格</p>' + listHTML(j['不符合原因']) +
-      '<p>資料已經存起來了（狀態「不符合」）。請跟學員說明原因，再按最下面的「結束」。</p></div>';
-    return '<div class="box warn"><p class="vt">！ 要確認</p>' + listHTML(j['要確認']) + marks +
-      '<p>改好按最下面的「改好了，產生申請文件」。改不了的，按「今天印不了，先換下一位」。</p></div>';
+    var need = arr(j['要確認']).map(str).filter(Boolean), marks = arr(j['標記']).map(str).filter(Boolean), h = '';
+    if (need.length) h += '<div class="box err"><p class="vt">✘ 還缺這些才能產生：</p>' + listHTML(need) +
+      '<p>請在下面補好，再按最下面的「資料都對，產生申請文件」。</p></div>';
+    if (marks.length) h += '<div class="box warn"><p class="vt">！ 提醒（逐條問她）：</p>' + listHTML(marks) +
+      '<p>這些不擋，問清楚就能產生。</p></div>';
+    if (!need.length && !marks.length) h += '<div class="box ok"><p class="vt">✔ 沒有提醒</p></div>';
+    return h;
   }
-  // 唸給她聽（規格 0-8）：現場人員唸給學員聽，她說對再按最下面的按鈕產生；不符合的沒有這一段
+  // 唸給她聽（規格 0-8）：現場人員唸給學員聽，她說對再按最下面的按鈕產生
   function sayHTML(j) {
     var s = str(j['唸給她聽']);
-    return s ? '<div class="box say"><p class="vt">唸給她聽，她說對再產生</p><p class="said">' + esc(s) + '</p></div>' : '';
+    return s ? '<div class="box say"><p class="vt"><span class="nw">唸給她聽，</span><span class="nw">她說對再產生</span></p><p class="said">' + esc(s) + '</p></div>' : '';
   }
   function factsHTML(j) {
-    var u = j['工會漁會'], age = str(j['年齡']), h = '';
-    [['今天', j['今天']], ['年齡', age ? age + ' 歲' : ''], [str(lastCo(j)['機構']) ? '最後工作日' : '結婚日（起算）', j['最後工作日']],
+    // 工會漁會的「迄」：今日＝還在保；日期＝已經退保的農保，切結書照實寫起訖（10/12）；舊雲端沒有這一欄＝今日
+    var u = j['工會漁會'], to = str(obj(u)['迄']), age = str(j['年齡']), h = '';
+    [['今天', j['今天']], ['年齡', age ? age + ' 歲' : ''], ['最後工作日', j['最後工作日']],
      ['滿 180 天', j['滿180天日']],
      ['離開職場', j['離開職場']],
-     ['工會、農保、漁保', u === null ? '沒有' : obj(u)['名稱'] ? obj(u)['名稱'] + (obj(u)['起'] ? '（切結書：' + obj(u)['起'] + ' 起至今日）' : '') : '']
+     ['工會、農保、漁保', u === null ? '沒有' : obj(u)['名稱'] ? obj(u)['名稱'] + (obj(u)['起'] ? '（切結書：' + obj(u)['起'] + ' 起至' +
+       (to && to !== '今日' ? ' ' + to + ' 止，已退保' : '今日') + '）' : '') : '']
     ].forEach(function (r) { if (str(r[1])) h += '<dt>' + esc(r[0]) + '</dt><dd>' + esc(str(r[1])) + '</dd>'; });
     return h ? '<dl class="facts">' + h + '</dl>' : '';
   }
-  // 三方比對：表單／身分證／勞保表頭；身分證、勞保那兩格可以改
-  function cmpHTML(ro) {
-    var list = arr(J()['比對']), id = IDC(), idu = arr(id['看不清楚']).map(str), lbu = arr(LB()['看不清楚']).map(str);
-    var h = '<h2 class="st">身分證、勞保、表單 對一對</h2><div class="idth">';
+  // 三方比對：表單／身分證／勞保表頭；身分證、勞保那兩格可以改。按了「沒有任何勞保、農保紀錄」的沒有勞保表頭，只比表單和身分證
+  function noRecord() { return LB()['沒有投保紀錄'] === true; }
+  function cmpHTML() {
+    var list = arr(J()['比對']), id = IDC(), idu = arr(id['看不清楚']).map(str), lbu = arr(LB()['看不清楚']).map(str), nr = noRecord();
+    var h = '<h2 class="st">' + (nr ? '身分證、表單 對一對' : '身分證、勞保、表單 對一對') + '</h2><div class="idth">';
     [['idFront', '正面', id['正面是身分證']], ['idBack', '反面', id['反面是身分證']]].forEach(function (x) {
       var f = files[x[0]];
       h += '<figure>' + (f && f.url ? '<img src="' + esc(f.url) + '" alt="身分證' + x[1] + '的照片">' : '<p class="hint">（照片不在這台電腦）</p>') +
@@ -1129,33 +1199,36 @@ textarea.inp{resize:vertical}
       var m = {};
       list.forEach(function (x) { if (obj(x)['項目'] === k) m = x; });
       var bad = m['一致'] === false, date = k === '出生日期';
-      var o = { ro: ro, im: date ? 'decimal' : '', ph: date ? '例 055/03/12' : '' };
+      var o = { im: date ? 'decimal' : '', ph: date ? '例 055/03/12' : '' };
       h += '<div class="card' + (bad ? ' bad' : '') + '"><div class="ch"><span class="cn">' + esc(k) + '</span>' +
         (bad ? '<span class="tag tbad">✘ 對不上</span>' : m['一致'] === true ? '<span class="tag tok">✔ 一致</span>' : '') + '</div>' +
         (str(m['表單']) ? '<div class="fl"><span class="fk">表單</span><span class="fv">' + esc(m['表單']) + '</span></div>' : '') +
-        fixField(k, '身分證', { ro: ro, im: o.im, ph: o.ph, uc: hasItem(idu, k) }) +
-        fixField('lh.' + k, '勞保', { ro: ro, im: o.im, ph: o.ph, uc: lbu.some(function (s) { return !/^(農保)?第/.test(nows(s)) && nows(s).indexOf(k) >= 0; }) }) +
+        fixField(k, '身分證', { im: o.im, ph: o.ph, need: true, uc: hasItem(idu, k) }) +
+        (nr ? '' : fixField('lh.' + k, '勞保', { im: o.im, ph: o.ph, uc: lbu.some(function (s) { return !/^(農保)?第/.test(nows(s)) && nows(s).indexOf(k) >= 0; }) })) +
         '</div>';
     });
     return h;
   }
-  function addrHTML(ro) {
+  function addrHTML() {
     var idu = arr(IDC()['看不清楚']).map(str);
     return '<h2 class="st">地址</h2>' +
-      fixField('戶籍地址', '戶籍地址', { ro: ro, lines: true, need: true, uc: hasItem(idu, '戶籍地址') }) +
-      fixField('通訊地址', '通訊地址', { ro: ro, lines: true, need: true }) +
-      fixField('郵遞區號', '郵遞區號', { ro: ro, im: 'numeric', need: true, ph: '通訊地址的，例 820' });
+      fixField('戶籍地址', '戶籍地址', { lines: true, need: true, uc: hasItem(idu, '戶籍地址') }) +
+      fixField('通訊地址', '通訊地址', { lines: true, need: true }) +
+      fixField('郵遞區號', '郵遞區號', { im: 'numeric', ph: '通訊地址的，例 820' });   // 空白不擋：申請表那格留白手寫
   }
-  // 一列勞保、農保的備註和單位欠費註記（工會、漁會、農保的這兩格要空白，不然判讀會要確認）
-  function noteHTML(r) {
-    return (r['備註'] ? '<p class="hint">備註：' + esc(r['備註']) + '</p>' : '') +
-      (r['單位欠費註記'] ? '<p class="hint">單位欠費註記：' + esc(r['單位欠費註記']) + '</p>' : '');
+  // 一列勞保、農保的單位欠費註記（只顯示；備註改成可以改的格子，見 laborHTML）
+  function feeHTML(r) {
+    return r['單位欠費註記'] ? '<p class="hint">單位欠費註記：' + esc(r['單位欠費註記']) + '</p>' : '';
   }
-  function laborHTML(ro) {
-    var lb = LB(), uc = arr(lb['看不清楚']).map(str), rows = state.fix['勞保']['明細'], chain = arr(J()['投保鏈']);
+  // 勞保投保明細：每一列（勞保、農保）的日期、備註都可以改（AI 偶爾漏讀「不適用就業保險」，看 PDF 補上；改的值隨核對後送回去重新判讀）
+  function laborHTML() {
+    var lb = LB(), uc = arr(lb['看不清楚']).map(str), rows = state.fix['勞保']['明細'], nb = state.fix['勞保']['農保明細'], chain = arr(J()['投保鏈']);
     var h = '<h2 class="st">勞保投保明細</h2>';
-    if (lb['是異動查詢'] === false) h += '<div class="box err"><p>✘ 這不是「異動查詢」那一頁（只有總覽不夠）。</p></div>';
-    if (lb['查無資料'] === true) h += '<div class="box err"><p>✘ 勞保資料寫「查無資料」。</p></div>';
+    if (noRecord()) return h + '<div class="card"><p class="cn">' + esc(NO_LABOR) + '（現場點選）</p></div>';
+    // 只提醒（雲端的提醒也會講）：只有總覽頁、只有農保那頁、查無資料
+    if (lb['是異動查詢'] === false) h += '<div class="box warn"><p>！ ' + (!rows.length && nb.length ?
+      '只有農保那頁，沒有勞保的「異動查詢」：請確認她的勞保真的查無資料。' : '這好像不是「異動查詢」那一頁（只有總覽不夠），請確認。') + '</p></div>';
+    if (lb['查無資料'] === true) h += '<div class="box warn"><p>！ 勞保資料寫「查無資料」，請確認。</p></div>';
     if (lb['下載時間']) h += '<p class="hint">勞保資料下載時間：' + esc(lb['下載時間']) + '</p>';
     if (uc.length) h += '<div class="box warn"><p>AI 看不清楚：' + esc(uc.join('、')) + '</p></div>';
     if (chain.length) {
@@ -1167,70 +1240,52 @@ textarea.inp{resize:vertical}
       });
       h += '</ul>';
     }
-    h += '<h3 class="st2">每一列' + (ro ? '' : '（可以改日期）') + '</h3>';
+    h += '<h3 class="st2">每一列（可以改日期、備註）</h3>';
     if (!rows.length) h += '<p>（沒有讀到投保紀錄）</p>';
-    rows.forEach(function (r, i) {
-      var n = i + 1;
-      h += '<div class="card"><div class="ch"><span class="cn">第 ' + n + ' 列</span><span>' + esc(r['投保單位'] || '（單位空白）') + '</span></div>' +
-        noteHTML(r) + '<div class="two">' +
-        fixField('md.' + i + '.生效日期', '生效日期', { ro: ro, im: 'decimal', ph: '例 110/03/01', uc: hasItem(uc, '第' + n + '列生效日期') }) +
-        fixField('md.' + i + '.退保日期', '退保日期', { ro: ro, im: 'decimal', ph: '沒有就空白', uc: hasItem(uc, '第' + n + '列退保日期') }) +
-        '</div></div>';
-    });
-    // 農保（不在勞保紀錄裡，學員另外傳的農保那頁）：日期一樣可以改，改的值會送回去重新檢查
-    var nb = state.fix['勞保']['農保明細'];
+    rows.forEach(function (r, i) { h += rowHTML('md', i, r, '第 ' + (i + 1) + ' 列', '第' + (i + 1) + '列', '例 110/03/01', uc); });
+    // 農保（不在勞保紀錄裡，學員另外傳的農保那頁）：一樣可以改，改的值會送回去重新檢查
     if (nb.length) {
-      h += '<h3 class="st2">農保每一列' + (ro ? '' : '（可以改日期）') + '</h3>';
-      nb.forEach(function (r, i) {
-        var n = i + 1;
-        h += '<div class="card"><div class="ch"><span class="cn">農保第 ' + n + ' 列</span><span>' + esc(r['投保單位'] || '（單位空白）') + '</span></div>' +
-          noteHTML(r) + '<div class="two">' +
-          fixField('nb.' + i + '.生效日期', '生效日期', { ro: ro, im: 'decimal', ph: '例 088/03/22', uc: hasItem(uc, '農保第' + n + '列生效日期') }) +
-          fixField('nb.' + i + '.退保日期', '退保日期', { ro: ro, im: 'decimal', ph: '沒有就空白', uc: hasItem(uc, '農保第' + n + '列退保日期') }) +
-          '</div></div>';
-      });
+      h += '<h3 class="st2">農保每一列（可以改日期、備註）</h3>';
+      nb.forEach(function (r, i) { h += rowHTML('nb', i, r, '農保第 ' + (i + 1) + ' 列', '農保第' + (i + 1) + '列', '例 088/03/22', uc); });
     }
     return h;
   }
-  // 勞保上沒有公司（是異動查詢那頁，只保工會、農保或查無資料）：核對頁多一格「結婚日期」
-  function needWed() { return !str(lastCo(J())['機構']) && LB()['是異動查詢'] !== false; }
-  // 工作經歷（前輩的寫法）：最後一家公司退保之後到今天是「家管」（只顯示）；最後一家公司的職稱可以改——
-  // 超過 5 年申請表不列，計畫書還是會寫，所以照樣要填
-  function jobsHTML(ro) {
-    var list = arr(J()['工作經歷']), c = lastCo(J()), at = -1;
-    var h = '<h2 class="st">工作經歷</h2>' + (str(c['機構']) ? '<p class="hint">最後一家公司退保之後到今天，申請表都寫「家管」。缺職稱的，請問學員後填上。</p>' : '');
-    list.forEach(function (w, i) {
-      w = obj(w);
-      if (str(w['機構'])) { if (str(w['機構']) === str(c['機構'])) at = i; return; }   // 公司那一筆在下面，職稱可以改
-      h += '<div class="card"><div class="ch"><span class="cn">' + esc(w['職稱']) + '</span></div>' +
-        '<p class="hint">申請表第 ' + (i + 1) + ' 筆：' + esc((w['起'] || '？') + ' ～ ' + (w['迄'] || '？')) + '（機構空白）</p></div>';
-    });
-    if (!str(c['機構'])) {   // 從來沒有公司勞保（10/11 晚）：申請表、切結書從結婚那天算，要問她結婚日期
-      if (!needWed()) return h + '<p>（勞保上沒有公司的紀錄）</p>';
-      return h + '<div class="card"><p class="hint">勞保上沒有公司的紀錄：申請表的家管、切結書都從結婚那天算。請問她結婚日期；' +
-        '沒結過婚的話，按最下面的「今天印不了，先換下一位」。</p>' +
-        fixField('結婚日期', '結婚日期', { ro: ro, need: true, im: 'decimal', ph: '例 080/05/01' }) + '</div>';
-    }
-    return h + '<div class="card"><div class="ch"><span class="cn">' + esc(c['機構']) + '</span></div>' +
-      '<p class="hint">最後一家公司：' + esc((c['起'] || '？') + ' ～ ' + (c['迄'] || '？')) +
-      (at >= 0 ? '（申請表第 ' + (at + 1) + ' 筆）' : '（超過 5 年，申請表不列；計畫書會寫）') + '</p>' +
-      fixField('lastTitle', '職稱', { ro: ro, need: true, ph: '例：作業員' }) + '</div>';
+  // 一列：生效日期、退保日期、備註（可以改）＋單位欠費註記（只顯示）；ucKey＝AI「看不清楚」清單裡這一列的寫法
+  function rowHTML(kind, i, r, name, ucKey, ph, uc) {
+    var p = kind + '.' + i + '.';
+    return '<div class="card"><div class="ch"><span class="cn">' + esc(name) + '</span><span>' + esc(r['投保單位'] || '（單位空白）') + '</span></div>' +
+      feeHTML(r) + '<div class="two">' +
+      fixField(p + '生效日期', '生效日期', { im: 'decimal', ph: ph, uc: hasItem(uc, ucKey + '生效日期') }) +
+      fixField(p + '退保日期', '退保日期', { im: 'decimal', ph: '沒有就空白', uc: hasItem(uc, ucKey + '退保日期') }) + '</div>' +
+      fixField(p + '備註', '備註', { ph: '沒有就空白', uc: hasItem(uc, ucKey + '備註') }) + '</div>';
+  }
+  // 工作經歷（10/12 R4）：申請表只寫一列＝最後一次工作，不寫家管。有公司勞保 → 最後一家公司，職稱可以改；
+  // 沒有公司勞保 → 沒保勞保的最後一次工作（表單問的四格，判讀.未投保工作 預填，可以改）。空白都不擋：那格留白手寫
+  function jobsHTML() {
+    var c = lastCo(J()), h = '<h2 class="st">工作經歷</h2><p class="hint">申請表的工作經歷只寫最後一次工作。空白的格子不會擋，申請表那格留白、要手寫。</p>';
+    if (str(c['機構'])) return h + '<div class="card"><div class="ch"><span class="cn">' + esc(c['機構']) + '</span></div>' +
+      '<p class="hint">最後一家公司：' + esc((c['起'] || '？') + ' ～ ' + (c['迄'] || '還在保')) + '</p>' +
+      fixField('lastTitle', '職稱', { ph: '例：作業員（請問她）' }) + '</div>';
+    return h + '<div class="card"><div class="ch"><span class="cn">最後一次工作（沒保勞保的）</span></div>' +
+      fixField('ng.職稱', '做什麼', { ph: '例：家庭代工' }) +
+      fixField('ng.機構', '在哪', { ph: '店名、公司名；沒有就空白' }) +
+      '<div class="two">' + fixField('ng.起', '從', { im: 'decimal', ph: '例 100/03/01' }) +
+      fixField('ng.迄', '到', { im: 'decimal', ph: '例 105/08/31' }) + '</div>' +
+      '<p class="hint">切結書「有實際工作而未投保」寫這段的起迄。</p></div>';
   }
   function reviewHTML() {
-    var j = J(), res = str(j['結果']), ro = res === '不符合';
+    var j = J();
     var h = '<h1>核對資料</h1><p class="lead">學員：' + esc(nameOf()) + '<span class="nw">（編號 ' + state.rid + '）</span></p>';
-    if (flash) h += '<div class="box ok" role="status"><p>' + escBr(flash) + '</p></div>';
+    if (flash) h += '<div class="box warn" role="status"><p>' + escBr(flash) + '</p></div>';
     h += verdictHTML(j) + sayHTML(j) + factsHTML(j);
-    if (!ro) h += '<p class="hint">請拿學員的身分證和勞保資料對照。有「AI 看不清楚」的格子要照實填；改過的地方，按最下面的按鈕才算數。</p>';
-    h += cmpHTML(ro) + addrHTML(ro) + laborHTML(ro) + jobsHTML(ro);
+    h += '<p class="hint">請拿學員的身分證和勞保資料對照。有「AI 看不清楚」的格子要照實填；改過的地方，按最下面的按鈕才算數。</p>';
+    h += cmpHTML() + addrHTML() + laborHTML() + jobsHTML();
     h += '<div id="msg" role="alert"></div>';
-    // 只有一顆主要按鈕；要確認、不符合的退路是下面的小字連結，按了確認框（#ask）出現在連結下面。不放「重新填寫」
-    if (res === '符合') h += '<button type="button" class="btn" data-act="gen">資料都對，產生申請文件</button>';
-    else h += (ro ? '<button type="button" class="btn" data-act="endAsk">結束</button>'
-                  : '<button type="button" class="btn" data-act="gen">改好了，產生申請文件</button>') +
+    // 只有一顆主要按鈕：缺姓名、字號、生日、地址時是不能按的樣式（補好就能按，按了 checkFix 會指出缺哪一格）；
+    // 退路永遠是下面兩個小字連結，按了確認框（#ask）出現在連結下面。不放「重新填寫」
+    return h + '<button type="button" class="btn" id="gen" data-act="gen" aria-disabled="' + (missingFix().length ? 'true' : 'false') + '">資料都對，產生申請文件</button>' +
       '<div class="foot"><button type="button" class="linkbtn" data-act="reeditAsk">回去換檔案或改答案</button>' +
-      (ro ? '' : '<button type="button" class="linkbtn" data-act="endAsk">今天印不了，先換下一位</button>') + '</div>';
-    return h + '<div id="ask"></div>';
+      '<button type="button" class="linkbtn" data-act="endAsk">今天印不了，先換下一位</button></div><div id="ask"></div>';
   }
 
   // ---------- 列印頁 ----------
@@ -1253,7 +1308,7 @@ textarea.inp{resize:vertical}
       '<a class="' + c2 + '" href="' + esc(pf.url) + '" download="' + esc('申請文件_' + nm + '.pdf') + '">下載 PDF</a>' +
       (ef ? (far ? '<h3 class="st2">信封</h3>' : '<h2 class="st">信封</h2>') + '<p class="lead">先把 A4 牛皮紙信封<span class="nw">放進印表機。</span></p>' + printBtn('pdf_env', '印信封', c2, '信封') : '');
     if (!far) h += btns;
-    h += '<h2 class="st">要簽名、寫日期的地方</h2>' + (arr(o['簽名處']).length ? '<ol class="plist">' + arr(o['簽名處']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>' : '<p>（沒有資料）</p>');
+    h += '<h2 class="st">要簽名、手寫的地方</h2>' + (arr(o['簽名處']).length ? '<ol class="plist">' + arr(o['簽名處']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>' : '<p>（沒有資料）</p>');
     if (arr(o['提醒']).length) h += '<h2 class="st">提醒</h2><ul class="plist">' + arr(o['提醒']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
     if (far) h += '<h2 class="st">列印站印不出來的時候</h2>' + btns;
     h += '<div id="msg" role="alert"></div><button type="button" class="btn" data-act="nextAsk">下一位學員</button><div id="ask"></div>';
@@ -1554,7 +1609,7 @@ textarea.inp{resize:vertical}
       b.hidden = !(o && (o.f || initial));   // 單選第一次點會自動跳題，不用按鈕
     }
     if (q.type === 'batch') b.hidden = !state.batch;   // 點梯次會自動往下；沒得選就不能往下
-    if (q.type === 'docs') b.className = 'btn' + (state.docs.length ? '' : ' btn2');   // 還沒選檔：選檔才是主要按鈕
+    if (q.type === 'docs') b.className = 'btn' + (state.docs.length || state.noLabor ? '' : ' btn2');   // 還沒選檔、也沒按「沒有任何紀錄」：選檔才是主要按鈕
     b.textContent = nextLabel(q);
   }
 
@@ -1570,11 +1625,12 @@ textarea.inp{resize:vertical}
     els[i].parentNode.insertBefore(m, els[i].nextSibling);
   }
 
-  // 下一題；從確認頁、核對頁來改的，或回去補拍、補選的，補完直接回到原本的位置
+  // 下一題（條件題沒問的跳過）；從確認頁、核對頁來改的，或回去補拍、補選的，補完直接回到原本的位置——
+  // 只有改了職稱、多出還沒答的條件題（沒在公司上過班的三題）時，先接著問完再回去
   function advance() {
-    var p = state.pos + 1;
+    var p = step(state.pos + 1, 1);
     if (state.back) {
-      p = lostAt(p, state.back) || state.back;
+      if (!(p < state.back && p <= N && QS[p - 1].when && !answered(QS[p - 1]))) p = lostAt(p, state.back) || state.back;
       if (p === state.back) state.back = 0;
     }
     go(p);
@@ -1634,18 +1690,30 @@ textarea.inp{resize:vertical}
     var err = check(q);
     if (err) {
       showMsg(err);
-      var f = document.getElementById('f_' + q.id) || document.getElementById('f_' + q.id + '_t');
+      var f = document.getElementById('f_' + q.id) || document.getElementById('f_' + q.id + '_t') ||
+        document.getElementById('f_' + q.id + (clean(state.a[q.id + '_from']) ? '_to' : '_from'));
       if (f && q.type !== 'multi') { try { f.focus(); } catch (e) { /* 略過 */ } }
       return;
     }
+    if (q.type === 'range') {   // 日期寫法看不懂：提醒一次，同樣的字再按一次就照寫（不擋）
+      var odd = rangeOdd(q), key = state.a[q.id + '_from'] + '|' + state.a[q.id + '_to'];
+      if (odd && softOk !== key) { softOk = key; showMsg(odd, 'warn'); return; }
+    }
     if (q.type === 'docs') docsLost = 0;
+    if (q.when && q.type === 'text' && typeof state.a[q.id] !== 'string') { state.a[q.id] = ''; save(); }   // 跳過也算答過（answered）
     advance();
+  }
+  // 從、到寫的字看不懂成民國日期 → 回傳提醒的話；都看得懂回傳空字串
+  function rangeOdd(q) {
+    var bad = [['從', '_from'], ['到', '_to']].filter(function (x) { var v = state.a[q.id + x[1]]; return clean(v) && !normDate(v); })
+      .map(function (x) { return '「' + x[0] + '」寫的「' + clean(state.a[q.id + x[1]]) + '」'; });
+    return bad.length ? bad.join('、') + '，\n看不出是哪一天。\n請寫成像 100/03/01 這樣。\n只記得大概的，照這樣也行，\n再按一次「' + nextLabel(q) + '」。' : '';
   }
 
   // 從確認頁、核對頁來改的：「回確認頁」先檢查這題再回去
   function onBack() {
     if (state.pos <= N && state.back >= SUBMIT) { onNext(); return; }
-    go(state.pos - 1);
+    go(step(state.pos - 1, -1));   // 條件題沒問的跳過
   }
 
   function onChk(el) {
@@ -1725,7 +1793,7 @@ textarea.inp{resize:vertical}
       }
       if (file.type && !/^image\//i.test(file.type)) { errs.push('「' + nm + '」不是 PDF 或照片，不能上傳。'); step(); return; }
       shrink(file, DOC_EDGE, DOC_Q, function (blob) {
-        if (!blob) errs.push('「' + (nm || '照片') + '」打不開，請換一張，或改用截圖、PDF。');
+        if (!blob) errs.push('「' + (nm || '照片') + '」打不開，請改選下載的 PDF。');
         else addDoc({ blob: blob, mime: 'image/jpeg', name: nm, url: URL.createObjectURL(blob), label: (nm || '照片') + '（' + kb(blob.size) + '）' });
         step();
       });
@@ -1735,9 +1803,20 @@ textarea.inp{resize:vertical}
     var k = 'doc_' + Date.now().toString(36) + '_' + (++docSeq);
     files[k] = f;
     state.docs.push({ k: k, label: f.label, mime: f.mime, size: f.blob.size });
+    state.noLabor = false;   // 二選一
     docsLost = 0;
     save();
     idbPut(k, f);
+  }
+  // 「沒有任何勞保、農保紀錄」：按一次選、再按一次取消；已經選了檔案不能按（按鈕是 disabled）
+  function onNoLabor() {
+    var q = curQ();
+    if (!q || q.type !== 'docs' || state.docs.length || working === q.id) return;
+    state.noLabor = !state.noLabor;
+    docsLost = 0;
+    save();
+    render();
+    if (state.noLabor) scrollToEl(document.getElementById('next'));
   }
   function undoc(k) {
     state.docs = state.docs.filter(function (x) { return x.k !== k; });
@@ -1805,11 +1884,12 @@ textarea.inp{resize:vertical}
       return;
     }
     for (var i = 0; i < N; i++) {
-      var err = check(QS[i]);
+      var err = shown(QS[i]) ? check(QS[i]) : '';   // 條件題沒問的不檢查
       if (err) { state.back = SUBMIT; go(i + 1); showMsg('這題還沒填好：' + err); return; }
     }
+    // 按了「沒有任何勞保、農保紀錄」：只送身分證兩張（資料表多一行 NO_LABOR_LINE）
     var list = [{ k: 'idFront', kind: '身分證正面' }, { k: 'idBack', kind: '身分證反面' }]
-      .concat(state.docs.map(function (x) { return { k: x.k, kind: '勞保資料' }; }));
+      .concat(state.noLabor ? [] : state.docs.map(function (x) { return { k: x.k, kind: '勞保資料' }; }));
     busy = true;
     makeFiles(list, function (out, gone) {
       busy = false;
@@ -1887,52 +1967,41 @@ textarea.inp{resize:vertical}
 
   // ---------- 核對後產生申請文件（規格 2-3） ----------
   // 送出前的格式檢查；有問題回傳 {path, msg}
+  // 只擋缺了就做不出文件的五格（空白才擋；字號格式、郵遞區號、日期寫法、職稱都不擋，交給提醒和唸給她聽）
+  var MUST = [['姓名', '姓名（身分證）'], ['身分證字號', '身分證字號（身分證）'], ['出生日期', '出生日期（身分證）'], ['戶籍地址', '戶籍地址'], ['通訊地址', '通訊地址']];
+  function missingFix() { return MUST.filter(function (m) { return !clean(fixGet(m[0])); }); }
+  // 送出前的檢查；有問題回傳 {path, msg}
   function checkFix() {
-    var f = state.fix, i, bad, rows = f['勞保']['明細'], nb = f['勞保']['農保明細'], c = lastCo(J());
-    function need(path, label) { return clean(fixGet(path)) ? null : { path: path, msg: label + '是空的，請填上。' }; }
-    function date(path, label, may) {
-      var v = fixGet(path);
-      if (!clean(v)) return may ? null : { path: path, msg: label + '是空的，請照文件填上。' };
-      return normDate(v) ? null : { path: path, msg: label + '「' + v + '」看不懂，請寫成像 055/03/12 這樣（民國年/月/日）。' };
-    }
-    bad = need('姓名', '姓名（身分證）') ||
-      (/^[A-Z][A-D0-9]\d{8}$/.test(normId(f['身分證字號'])) ? null : { path: '身分證字號', msg: '身分證字號（身分證）要 1 個英文字母加 9 個數字，請再看一下。' }) ||
-      date('出生日期', '出生日期（身分證）') || date('lh.出生日期', '出生日期（勞保）', true) ||
-      need('戶籍地址', '戶籍地址') || need('通訊地址', '通訊地址') ||
-      (/^\d{3}(\d{2,3})?$/.test(digits(f['郵遞區號'])) ? null : { path: '郵遞區號', msg: '郵遞區號要 3 個數字（或 5、6 個），請填上通訊地址的郵遞區號。' });
-    if (bad) return bad;
-    for (i = 0; i < rows.length; i++) {
-      bad = date('md.' + i + '.生效日期', '勞保第 ' + (i + 1) + ' 列的生效日期') || date('md.' + i + '.退保日期', '勞保第 ' + (i + 1) + ' 列的退保日期', true);
-      if (bad) return bad;
-    }
-    for (i = 0; i < nb.length; i++) {
-      bad = date('nb.' + i + '.生效日期', '農保第 ' + (i + 1) + ' 列的生效日期') || date('nb.' + i + '.退保日期', '農保第 ' + (i + 1) + ' 列的退保日期', true);
-      if (bad) return bad;
-    }
-    if (str(c['機構']) && !clean(f['最後公司職稱'])) return { path: 'lastTitle', msg: '最後一家公司（' + str(c['機構']) + '）還沒填職稱，請問學員後填上。' };
-    if (needWed()) {
-      bad = date('結婚日期', '結婚日期');
-      if (bad) return { path: '結婚日期', msg: clean(f['結婚日期']) ? bad.msg : '她沒有公司勞保紀錄，請問她結婚日期，填在「結婚日期」。沒結過婚的話，按最下面的「今天印不了，先換下一位」。' };
-    }
-    return null;
+    var m = missingFix()[0];
+    return m ? { path: m[0], msg: m[1] + '是空的，請照身分證填上（沒有它做不出申請文件）。' } : null;
   }
+  // 主按鈕：五格都有字才是能按的樣式（打字時跟著變）
+  function paintGen() { var b = document.getElementById('gen'); if (b) b.setAttribute('aria-disabled', missingFix().length ? 'true' : 'false'); }
   // 送出的「核對後」（3-4 的格式；日期整理成 YYY/MM/DD、字號大寫；勞保的「看不清楚」照 AI 原本的清單）
   function fixOut() {
-    var f = state.fix, lb = JSON.parse(JSON.stringify(f['勞保']));
+    var f = state.fix, lb = JSON.parse(JSON.stringify(f['勞保'])), ng = f['未投保工作'], id = IDC(), flags = {};
     function d(v) { var x = normDate(v); return x === null ? clean(v) : x; }
-    lb['明細'].concat(lb['農保明細']).forEach(function (r) { ['生效日期', '退保日期'].forEach(function (k) { if (r[k] != null) r[k] = d(r[k]); }); });
+    lb['明細'].concat(lb['農保明細']).forEach(function (r) {
+      ['生效日期', '退保日期'].forEach(function (k) { if (r[k] != null) r[k] = d(r[k]); });
+      if (typeof r['備註'] === 'string') r['備註'] = r['備註'].trim();   // 核對頁可以改（10/12 R6）
+    });
     if (lb['表頭']['姓名'] != null) lb['表頭']['姓名'] = clean(lb['表頭']['姓名']);
     if (lb['表頭']['身分證字號'] != null) lb['表頭']['身分證字號'] = normId(lb['表頭']['身分證字號']);
     if (lb['表頭']['出生日期'] != null) lb['表頭']['出生日期'] = d(lb['表頭']['出生日期']);
+    // 身分證旗標：讀取結果的身分證原封抄回去（產生時雲端重新判讀要用，例：照片不是身分證、性別是男 → 提醒）
+    ['正面是身分證', '反面是身分證', '看不清楚', '性別'].forEach(function (k) { flags[k] = id[k] === undefined ? null : id[k]; });
     return { '姓名': clean(f['姓名']), '身分證字號': normId(f['身分證字號']), '出生日期': d(f['出生日期']), '戶籍地址': clean(f['戶籍地址']),
       '通訊地址': clean(f['通訊地址']), '郵遞區號': digits(f['郵遞區號']), '最後公司職稱': clean(f['最後公司職稱']),
-      '結婚日期': d(f['結婚日期']), '勞保': lb };
+      '未投保工作': { '職稱': clean(ng['職稱']), '機構': clean(ng['機構']), '起': d(ng['起']), '迄': d(ng['迄']) },
+      '身分證旗標': flags, '勞保': lb, '核對時最後公司': str(lastCo(J())['機構']) };   // 改了勞保讓最後公司換了，雲端會退回來重唸（10/12）
   }
-  // 重新判讀的結果（409）：換掉判讀；改了勞保日期、最後一家公司換了，職稱就用新判讀的（填的是原本那家的）
+  // 重新判讀的結果（409）：換掉判讀；改了勞保日期、備註，最後一家公司換了，職稱就用新判讀的（填的是原本那家的）；
+  // 變成沒有公司、零工四格還空著，就用新判讀預填的
   function rejudged(j) {
-    var before = str(lastCo(J())['機構']);
+    var before = str(lastCo(J())['機構']), ng = state.fix['未投保工作'];
     state.read['判讀'] = j;
     if (str(lastCo(j)['機構']) !== before) state.fix['最後公司職稱'] = str(lastCo(j)['職稱']);
+    if (!str(lastCo(j)['機構']) && !NG_KEYS.some(function (k) { return clean(ng[k]); })) state.fix['未投保工作'] = ngOf(j['未投保工作']);
   }
 
   function wrapOf(path) {
@@ -1982,9 +2051,9 @@ textarea.inp{resize:vertical}
         state.wait = '';
         if (r.ok) { gotDocs(r.data); return; }
         view = 'screen';
-        if (r.status === 409 && r.data && r.data['判讀'] && typeof r.data['判讀'] === 'object') {
+        if (r.status === 409 && r.data && r.data['判讀'] && typeof r.data['判讀'] === 'object') {   // 只有缺了做不出文件的才會 409（needs_check）
           rejudged(r.data['判讀']);
-          flash = '已經用改過的資料再檢查一次，結果是「' + (str(J()['結果']) || '要確認') + '」。請看下面。';
+          flash = '已經用改過的資料再檢查一次，' + (arr(J()['要確認']).length ? '還缺資料，請看下面的紅框。' : '請看下面，再按一次產生。');
           go(REVIEW);
           return;
         }
@@ -2023,10 +2092,10 @@ textarea.inp{resize:vertical}
   function ask(kind) {
     var el = document.getElementById('ask');
     if (!el) return;
-    var res = str(J()['結果']) || '要確認', t;
+    var st = str(J()['結果']) === '要確認' ? '要確認' : '待核對', t;   // 試算表上的狀態（讀取後：缺必填＝要確認，其他＝待核對）
     if (kind === 'next') t = ['文件都印好、學員都簽好名了嗎？\n按「確定」會清掉這台電腦上這位學員的資料（照片、勞保、申請文件）。', '確定，下一位學員', '還沒，回去'];
-    else if (kind === 'end') t = ['確定' + (res === '不符合' ? '' : '先') + '結束嗎？\n資料已經存起來了（編號 ' + state.rid + '，狀態「' + res + '」）。' +
-      (res === '不符合' ? '' : '這一頁改的地方不會存。') + '\n按「確定」會清掉這台電腦上這位學員的資料。', '確定，換下一位學員', '不要，回去'];
+    else if (kind === 'end') t = ['確定先結束嗎？\n資料已經存起來了（編號 ' + state.rid + '，狀態「' + st + '」）。這一頁改的地方不會存。' +
+      '\n按「確定」會清掉這台電腦上這位學員的資料。', '確定，換下一位學員', '不要，回去'];
     else t = ['回確認頁改的話，要重新讀取一次。\n這一頁改的地方不會留著。', '確定，回確認頁', '不要，留在這裡'];
     el.innerHTML = '<div class="box warn"><p>' + escBr(t[0]) + '</p>' +
       '<button type="button" class="btn" data-act="askNo">' + esc(t[2]) + '</button>' +
@@ -2072,7 +2141,7 @@ textarea.inp{resize:vertical}
     return null;
   }
   var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, edit: 1, batch: 1, gen: 1, codeOk: 1, endAsk: 1, nextAsk: 1, reeditAsk: 1,
-    station: 1, stPrint: 1, retry: 1 };
+    station: 1, stPrint: 1, retry: 1, noLabor: 1 };
 
   app.addEventListener('click', function (e) {
     var el = actEl(e.target);
@@ -2089,6 +2158,7 @@ textarea.inp{resize:vertical}
       case 'send': onSubmit(); break;
       case 'edit': state.back = SUBMIT; go(Number(el.getAttribute('data-q'))); break;
       case 'undoc': undoc(el.getAttribute('data-k')); break;
+      case 'noLabor': onNoLabor(); break;
       case 'batch': onBatch(Number(el.getAttribute('data-i'))); break;
       case 'reloadBatches': loadBatches(); render(); break;
       case 'code': askCode('change'); break;
@@ -2120,6 +2190,7 @@ textarea.inp{resize:vertical}
       save();
       autoGrow(t);
       paintFix(fp);
+      paintGen();
       clearErr();
       hideMsg();
       return;
@@ -2159,6 +2230,8 @@ textarea.inp{resize:vertical}
       if (t && t.id === 'f_code') { e.preventDefault(); if (!busy) onCodeOk(); return; }
       if (t && t.tagName === 'INPUT' && t.getAttribute('data-field')) {
         e.preventDefault();
+        var to = /_from$/.test(t.id) && document.getElementById(t.id.replace(/_from$/, '_to'));   // 「從」按 Enter 跳到「到」
+        if (to) { try { to.focus(); } catch (err) { /* 略過 */ } return; }
         if (Date.now() - shownAt >= GUARD_MS) onNext();
       }
     }
