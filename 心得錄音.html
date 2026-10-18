@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="format-detection" content="telephone=no, email=no, address=no">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:,">
+<title>上課心得錄音</title>
+<script>
+// 雲端服務網址（跟 index.html 同一個；結尾不要加斜線）。留空字串＝測試模式：不連網、錄音不會送出（名字、梯次、名單用範例）。
+// 本機測試：開 測試資料/假雲端服務.py、測試資料/網頁測試伺服器.py（會複製一份、把複本的網址改成假雲端）；正本一律保持正式網址
+var SERVICE_URL = 'https://gov-subsidy-450277428146.asia-east1.run.app';
+</script>
+<!--
+  心得錄音網頁（2026-10-17；規格：docs/規格_現場報名雲端版.md 第 12 節）
+  - 學員：掃小卡上的 QR（網址 心得錄音.html#t=<她的代碼>）→ 先出現她的全名、按「是我」→ 一題一畫面，用講的回答 4 題
+  - 現場人員：網址加 #現場 → 輸入店裡的通關碼（記在這台手機）→ 選梯次 → 點名字 → 同樣的畫面幫她錄
+  - 錄音（MediaRecorder：iPhone Safari 是 audio/mp4、Android Chrome 是 audio/webm）每段最長 5 分鐘；
+    錄好先存在這台手機的 IndexedDB，傳上去、雲端轉成文字存好了才刪；傳不上去留著，「再試一次」，重新整理也不會掉
+  - 不載任何外部資源：只用系統字型，CSS／JS 全部在這個檔案裡；畫面上不出現主辦人的名字
+-->
+<style>
+:root{
+  --ink:#111111;--ink2:#2b2b2b;--line:#595959;--bg:#ffffff;--soft:#efefec;
+  --pri:#0b4f9c;--pri-dk:#083b75;--pri-bg:#e3edfa;--rec:#b00000;--rec-dk:#7d0000;
+  --err:#a00000;--err-bg:#fff0f0;--warn:#7a4a00;--warn-bg:#fff4d8;--ok:#1b6a2e;--ok-bg:#ecf7ee;
+  color-scheme:light
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{background:var(--bg);-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Heiti TC","Noto Sans TC","Noto Sans CJK TC","Microsoft JhengHei",sans-serif;font-size:22px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px 48px}
+button,input,textarea{font:inherit;color:inherit;margin:0}
+button{-webkit-appearance:none;appearance:none;cursor:pointer;touch-action:manipulation}
+h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
+.nw{white-space:nowrap}
+.lead{font-size:24px;margin:0 0 14px}
+.hint{font-size:22px;color:var(--ink2);margin:0 0 8px}
+.small{font-size:20px;color:var(--ink2);margin:16px 0 0}
+.tm{margin:12px 0 0;padding:8px 12px;border:3px dashed var(--ink2);border-radius:12px;background:var(--warn-bg);font-size:20px;font-weight:800;text-align:center}
+.who{margin:14px 0 0;font-size:22px;font-weight:800;color:var(--ink2)}
+
+/* 上方：上一題＋第幾題 */
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:12px 0 8px}
+.back{min-height:64px;padding:8px 18px 8px 12px;border:3px solid var(--ink2);border-radius:14px;background:#fff;color:var(--ink);font-size:22px;font-weight:700}
+.back:active{background:var(--soft)}
+.count{font-size:22px;font-weight:800;padding:6px 0 6px 12px}
+.bar{height:14px;border:2px solid var(--ink2);border-radius:8px;background:#fff;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--pri)}
+
+/* 名字、題目 */
+.hello{font-size:44px;line-height:1.3;font-weight:800;margin:40px 0 6px;overflow-wrap:anywhere}
+.ask{font-size:30px;font-weight:800;margin:0 0 8px}
+.qt{font-size:32px;line-height:1.4;font-weight:800;margin:24px 0 8px}
+.qt:focus{outline:none}
+.qs{font-size:24px;line-height:1.45;font-weight:700;margin:10px 0 0}
+.tip{font-size:24px;line-height:1.45;font-weight:700;color:var(--ink2);margin:0 0 16px}
+.qs+.tip{font-size:22px;margin:4px 0 0}
+
+/* 提醒框（有粗框和文字，不只靠顏色） */
+.box{margin:14px 0;padding:14px 16px;border:3px solid;border-radius:14px;font-size:22px;font-weight:700;line-height:1.5}
+.box p{margin:0}
+.box p+p{margin-top:8px}
+.err{border-color:var(--err);background:var(--err-bg);color:var(--err)}
+.warn{border-color:var(--warn);background:var(--warn-bg);color:var(--ink)}
+.ok{border-color:var(--ok);background:var(--ok-bg);color:var(--ink)}
+.got{margin:20px 0;padding:18px 16px;border:5px solid var(--ok);border-radius:16px;background:var(--ok-bg);font-size:34px;font-weight:800;text-align:center}
+.got small{display:block;font-size:22px;font-weight:700}
+.big{font-size:30px;line-height:1.4;font-weight:800}
+
+/* 按鈕 */
+.btn{display:block;width:100%;min-height:72px;margin:20px 0 0;padding:14px 18px;border:3px solid var(--pri);border-radius:14px;background:var(--pri);color:#fff;font-size:26px;font-weight:800;line-height:1.3;text-align:center;text-decoration:none}
+.btn:active{background:var(--pri-dk)}
+.btn2{background:#fff;color:var(--pri-dk)}
+.btn2:active{background:var(--pri-bg)}
+.btn svg{width:34px;height:34px;margin-right:10px;vertical-align:-6px}
+.rec{min-height:112px;border-color:var(--rec);background:var(--rec);font-size:32px}
+.rec:active{background:var(--rec-dk)}
+.stop{min-height:112px;border-color:var(--ink);background:var(--ink);font-size:32px}
+.stop:active{background:#000}
+.more{background:#fff;border-color:var(--rec);color:var(--rec)}
+.more:active{background:var(--err-bg)}
+.foot{margin:36px 0 0;text-align:center}
+.linkbtn{min-height:56px;padding:8px 16px;border:0;background:none;color:var(--ink2);font-size:22px;text-decoration:underline}
+
+/* 錄音中：會動的紅點＋計時 */
+.recbox{margin:26px 0 0;padding:20px 16px;border:5px solid var(--rec);border-radius:18px;text-align:center}
+.recnow{display:flex;align-items:center;justify-content:center;gap:14px;font-size:30px;font-weight:800;color:var(--rec)}
+.dot{width:30px;height:30px;border-radius:50%;background:var(--rec);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.45);opacity:.45}}
+.clock{margin:8px 0 0;font-size:60px;line-height:1.2;font-weight:800;font-variant-numeric:tabular-nums}
+.left{margin:4px 0 0;font-size:22px;font-weight:800}
+.left.soon{color:var(--rec)}
+.goal{margin:2px 0 0;font-size:24px;font-weight:800}
+.goal.met{color:var(--ok)}
+
+/* 等候 */
+.spin{width:72px;height:72px;margin:28px auto;border:8px solid var(--pri-bg);border-top-color:var(--pri);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:4s}.dot{animation-duration:3s}}
+
+/* 現場人員：通關碼、梯次、名單 */
+.flabel{display:block;font-size:22px;font-weight:800;margin:8px 0}
+.field{display:block;width:100%;min-height:72px;padding:14px 16px;border:3px solid var(--ink2);border-radius:14px;background:#fff;color:var(--ink);font-size:36px;letter-spacing:.3em;-webkit-appearance:none;appearance:none}
+.field:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--pri)}
+.list{list-style:none;margin:12px 0 0;padding:0}
+.row{display:block;width:100%;min-height:80px;margin:0 0 14px;padding:12px 16px;border:3px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);text-align:left}
+.row:active{background:var(--soft)}
+/* 名單一位一格：上面點名字錄音，下面「寫成心得」 */
+.prow{margin:0 0 16px;border:3px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+.pick{display:block;width:100%;min-height:80px;padding:12px 16px;border:0;background:#fff;color:var(--ink);text-align:left}
+.pick:active{background:var(--soft)}
+.wbtn{display:block;width:calc(100% - 24px);min-height:64px;margin:0 12px 12px;padding:8px 14px;border:3px solid var(--pri);border-radius:12px;background:var(--pri);color:#fff;font-size:22px;font-weight:800}
+.wbtn:active{background:var(--pri-dk)}
+.wbtn.again{background:#fff;color:var(--pri-dk)}
+.wbtn[aria-disabled="true"]{background:#e6e6e6;border-color:#7a7a7a;border-style:dashed;color:#333;cursor:not-allowed}
+/* 心得全文（現場可以直接改字） */
+.essay{display:block;width:100%;min-height:360px;padding:14px 16px;border:3px solid var(--ink2);border-radius:14px;background:#fff;color:var(--ink);font-size:22px;line-height:1.7;resize:vertical;-webkit-appearance:none;appearance:none}
+.essay:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--pri)}
+.box ul{margin:6px 0 0;padding-left:1.3em}
+.box li{margin:4px 0}
+.alt{display:block;width:100%;min-height:56px;margin:12px 0 0;padding:12px 8px;color:var(--pri-dk);font-size:22px;font-weight:700;text-align:center;text-decoration:underline}
+.pframe{position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;opacity:0;pointer-events:none}
+.rn{display:block;font-size:30px;font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+.rs{display:block;font-size:22px;font-weight:700}
+.rs.done{color:var(--ok)}
+.rp{display:inline-block;margin-top:4px;padding:0 8px;border:2px solid var(--warn);border-radius:8px;background:var(--warn-bg);font-size:19px;font-weight:800}
+.rc{display:inline-block;margin:4px 10px 0 0;font-size:20px;font-weight:700}
+.ry{display:table;margin:2px 0 4px;padding:0 8px;border:2px solid var(--warn);border-radius:8px;background:var(--warn-bg);font-size:19px;font-weight:800}
+.bar2{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin:24px 0 0}
+.bar2 h1{margin:0}
+.bar2 .btn{width:auto;margin:0;padding:8px 22px;min-height:64px;font-size:22px}
+.ticks{list-style:none;margin:10px 0 0;padding:0;font-size:24px;font-weight:700}
+.ticks li{margin:6px 0}
+</style>
+</head>
+<body>
+<main id="app" class="wrap"></main>
+<noscript><p style="font-size:24px;padding:16px">這個網頁需要開啟 JavaScript。請用 Safari 或 Chrome 打開。</p></noscript>
+<script>
+(function () {
+  'use strict';
+
+  var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
+  var CODE_KEY = 'gov_subsidy.voice.store_code';   // 現場人員的手機記住店裡的通關碼（跟報名網頁分開記，不動它記的那個）
+  var BATCH_KEY = 'gov_subsidy.voice.batch';       // 現場人員上次選的梯次：下次打開直接到那一梯的名單
+  var DB_NAME = 'gov_subsidy.voice', DB_STORE = 'clips';   // IndexedDB：還沒傳上去的錄音（傳好、雲端存好了才刪）
+  var STAFF_HASH = '現場';
+  var MAX_SEC = 300, SOON_SEC = 30, MIN_SEC = 1.5;  // 一段最長 5 分鐘（自動停）；剩 30 秒開始提醒；不到 1.5 秒當作沒講
+  var WAIT_MS = { who: 45000, clip: 240000, batches: 45000, cls: 90000,     // 最多等多久，超過當沒成功（轉文字最久約 3 分鐘）
+    write: 240000, print: 90000, essay: 45000 };                            // 寫心得（AI 寫＋檢查、改一次，同產生申請文件）、排版列印、拿上次印的
+  var GUARD_MS = 400;                               // 換畫面後這段時間內的點擊不算（防連點點到下一個畫面的按鈕）
+  var MIMES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/mp4;codecs=mp4a.40.2'];   // 錄音格式照順序挑第一個能用的
+  var RETRY = { net: 1, timeout: 1, bad_json: 1, ai_failed: 1, sheet_failed: 1, internal: 1 };       // 這些錯誤「再試一次」可能會好
+  var UA = navigator.userAgent || '';
+  var IN_LINE = /\bLine\//i.test(UA);               // LINE 內建的瀏覽器（多半不能用麥克風）
+  // 手機、平板（iPad 的 Safari 自稱 Mac，用觸控點數認）：心得 PDF 用新分頁打開再列印；電腦用隱藏框直接叫列印（同 index.html）
+  var TOUCH = /iPad|iPhone|iPod|Android/i.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+  // 測試模式（SERVICE_URL 空的）才用：正式的題目由雲端給（跟寫心得那條線同一套字）
+  var TEST_QS = ['上課前，你在做什麼？為什麼想來上這堂課？', '今天學到什麼？自己做出了什麼？',
+    '這些對你找工作有什麼幫助？你想做什麼工作？', '接下來，你打算怎麼找工作？'];
+  // 每題大字題目下面的提示（2026-10-17：心得字數約是她講的 0.75–0.9 倍，講 3 分鐘只寫得出約 640 字，到不了 800 字 → 提示她多講一點）。
+  // 只是提醒、不擋；題目本身的字不改
+  var HINTS = ['例如：以前做過什麼工作、做了多久？', '例如：哪一個最有用？你自己試了什麼？',
+    '例如：想做什麼工作？在那份工作上會怎麼用？', '例如：什麼時候開始找？去哪裡找？'];
+  var GOAL_SEC = 60;          // 錄音中的溫和目標：每一題講 1 分鐘以上最好（不到也能按「講完了」）
+  var ENOUGH_CHARS = 1000;    // 現場人員的名單：4 題加起來不到這麼多字，黃色標「可以請她再補充」
+  var MIC = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5" fill="#fff"/><path d="M5 11.5a7 7 0 0 0 14 0M12 18.5v3" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>';
+  var STOP = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="5" y="5" width="14" height="14" rx="2" fill="#fff"/></svg>';
+
+  var app = document.getElementById('app');
+  var mode = '', token = '', storeCode = '';
+  var view = 'loading', shownAt = 0;
+  var person = null;     // 這次在錄的人：{ 編號, 姓名, 梯次, 題目: [4 題], 已錄: {"1": 段數, …} }
+  var q = 1;             // 第幾題
+  var flash = '';        // 題目畫面上方一次性的話：got＝剛收到；或一句提醒
+  var note = null;       // msg、fail、mic 畫面的內容：{ text, again, act, kind }
+  var pending = [];      // 這個人還沒傳上去的錄音（記憶體一份、IndexedDB 一份），照錄的先後
+  var rec = null;        // 錄音中：{ stream, mr, chunks, t0, timer, mime, lock, done }
+  var batches = null, cls = null, clsBatch = '', codeWhy = 'first', loadingText = '';
+  // 心得（現場人員）：{ 編號, 姓名, 心得（畫面上的，可能改過）, 原文（AI 寫的）, 字數, 提醒, 句子, 寫的時間, 印好, 頁數, url（PDF，只放記憶體）,
+  // 已存雲端 }；essayNo＝正在處理哪一位（寫、看失敗時「再試一次」用）；askRewrite＝改過字又按重寫，先問一下
+  var essay = null, essayNo = 0, askRewrite = false, printing = false;
+
+  // ---------- 小工具 ----------
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  }
+  function escBr(s) { return esc(s).replace(/\n/g, '<br>'); }
+  function str(s) { return s == null ? '' : String(s); }
+  function half(s) { return str(s).replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xfee0); }); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function clock(sec) { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 60) + ':' + pad(sec % 60); }
+  function newId() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function counts() { return (person && person['已錄']) || {}; }
+  function has(n) { return Number(counts()[String(n)]) > 0; }
+  function allDone() { return [1, 2, 3, 4].every(has); }
+  function firstMissing() { for (var n = 1; n <= 4; n++) { if (!has(n)) return n; } return 0; }
+  function missingText(c) {
+    var miss = [1, 2, 3, 4].filter(function (n) { return !(Number(c[String(n)]) > 0); });
+    if (!miss.length) return '';
+    return miss.length === 4 ? '還沒錄' : '錄了 ' + (4 - miss.length) + ' 題，還差第 ' + miss.join('、') + ' 題';
+  }
+  function personKey(p) { return mode === 'staff' ? 'n:' + p['編號'] : 't:' + token; }
+
+  // ---------- 現場通關碼、上次的梯次（記在這台手機；存不了：這次開著還是能用） ----------
+  function loadLocal(k) { try { return str(window.localStorage.getItem(k)); } catch (e) { return ''; } }
+  function saveLocal(k, v) { try { if (v) window.localStorage.setItem(k, v); else window.localStorage.removeItem(k); } catch (e) { /* 存不了 */ } }
+
+  // ---------- 還沒傳上去的錄音：IndexedDB（存 ArrayBuffer 不存 Blob：有些瀏覽器把 Blob 存進 IndexedDB 會失敗） ----------
+  var idb = null, idbWait = null;   // idb：開好的資料庫（false＝這台不能用）
+  function useDB(fn) {
+    if (idb !== null) { fn(idb || null); return; }
+    if (idbWait) { idbWait.push(fn); return; }
+    idbWait = [fn];
+    function ready(d) {
+      if (idb !== null) return;
+      idb = d || false;
+      var w = idbWait;
+      idbWait = null;
+      w.forEach(function (f) { f(idb || null); });
+    }
+    try {
+      var r = window.indexedDB.open(DB_NAME, 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore(DB_STORE, { keyPath: 'id' }); };
+      r.onsuccess = function () { ready(r.result); };
+      r.onerror = function () { ready(null); };
+      setTimeout(function () { ready(null); }, 3000);   // 3 秒還打不開就當這台不能用（照樣能錄，只是重新整理會掉）
+    } catch (e) { ready(null); }
+  }
+  function idbStore(d, mode2) { return d.transaction(DB_STORE, mode2).objectStore(DB_STORE); }
+  function idbPut(clip) { useDB(function (d) { if (d) { try { idbStore(d, 'readwrite').put(clip); } catch (e) { /* 存不了 */ } } }); }
+  function idbDel(id) { useDB(function (d) { if (d) { try { idbStore(d, 'readwrite').delete(id); } catch (e) { /* 略過 */ } } }); }
+  // 這台手機上還沒傳的錄音：key＝哪個人（沒給就全部）；照錄的先後
+  function idbList(key, cb) {
+    useDB(function (d) {
+      if (!d) { cb([]); return; }
+      try {
+        var r = idbStore(d, 'readonly').getAll();
+        r.onsuccess = function () {
+          cb((r.result || []).filter(function (c) { return !key || c.key === key; }).sort(function (a, b) { return a.at - b.at; }));
+        };
+        r.onerror = function () { cb([]); };
+      } catch (e) { cb([]); }
+    });
+  }
+
+  // ---------- 呼叫雲端服務 ----------
+  // cb(r)：r.ok＝成功、r.data＝回的 JSON；失敗 r.code＝store_code／bad_input／ai_failed／…（服務的代碼）或 net／timeout／bad_json，
+  //        r.msg＝服務寫的白話、r.status＝HTTP 狀態碼。現場人員的請求帶店裡的通關碼；學員的代碼放在網址參數或內容的 t
+  function api(method, path, body, ms, cb) {
+    var ended = false, ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); end({ code: 'timeout' }); }, ms);
+    function end(r) { if (!ended) { ended = true; clearTimeout(timer); cb(r); } }
+    var opt = { method: method, headers: {}, cache: 'no-store', signal: ctrl ? ctrl.signal : undefined };
+    if (mode === 'staff') opt.headers['X-Store-Code'] = storeCode;
+    if (body != null) { opt.headers['Content-Type'] = 'application/json'; opt.body = body; }
+    try {
+      fetch(API + path, opt).then(function (res) {
+        return res.text().then(function (t) {
+          var j = null;
+          try { j = JSON.parse(t); } catch (e) { /* 不是 JSON */ }
+          if (!j || typeof j !== 'object') end({ code: 'bad_json', status: res.status });
+          else if (res.ok && j.ok === true) end({ ok: true, status: res.status, data: j });
+          else end({ code: str(j['代碼']) || 'internal', status: res.status, msg: str(j['錯誤']), data: j });
+        });
+      }).catch(function (e) { end({ code: 'net', msg: String(e) }); });
+    } catch (e) { end({ code: 'net', msg: String(e) }); }
+  }
+  function errText(r) {
+    if (r.code === 'net') return '網路斷線了，請看 Wi-Fi 或行動網路有沒有通。';
+    if (r.code === 'timeout') return '雲端太久沒有回應。';
+    return r.msg || '雲端服務出錯了（' + (r.code || 'HTTP ' + r.status) + '）。';
+  }
+
+  // ---------- 測試模式（SERVICE_URL 空的）：不連網，回範例 ----------
+  var testCounts = { '1': 0, '2': 0, '3': 0, '4': 0 }, testChars = { '1': 0, '2': 0, '3': 0, '4': 0 };
+  function fake(path, body, cb) {
+    setTimeout(function () {
+      if (path.indexOf('/api/voice/who') === 0) cb({ ok: true, data: { '編號': 1, '姓名': '王小美（測試）', '梯次': '115/11/18（三）', '題目': TEST_QS, '已錄': testCounts, '字數': testChars } });
+      else if (path.indexOf('/api/voice/clip') === 0) {
+        var n = String(JSON.parse(body)['題']);
+        testCounts[n] = (testCounts[n] || 0) + 1;
+        testChars[n] = (testChars[n] || 0) + 10;
+        cb({ ok: true, data: { '題': Number(n), '文字': '（測試模式：沒有存）', '已錄': testCounts, '字數': testChars } });
+      } else if (path.indexOf('/api/batches') === 0) cb({ ok: true, data: { '梯次': [{ '梯次': '115/11/18（三）', '開課日': '115/11/18', '辦訓單位': '測試辦訓有限公司', '上課時間': '09:00–18:00' }] } });
+      else if (path.indexOf('/api/voice/write') === 0) cb({ ok: true, data: { '心得': '（測試模式：沒有連雲端服務，這是範例）\n上課前我在家照顧孫子。', '字數': 25, '提醒': ['測試模式：沒有真的寫'], '句子': [], '寫的時間': '' } });
+      else if (path.indexOf('/api/voice/print') === 0) cb({ ok: true, data: { 'base64': btoa('%PDF-1.4\n%%EOF\n'), '頁數': 1, '字數': 0, '提醒': [], '已存雲端': false } });
+      else if (path.indexOf('/api/voice/essay') === 0) cb({ ok: true, data: { '心得內容': null } });
+      else cb({ ok: true, data: { '梯次': clsBatch, '核准函未知': false, '學員': [{ '編號': 1, '姓名': '王小美（測試）', '已錄': testCounts, '字數': testChars }] } });
+    }, 600);
+  }
+  function call(method, path, body, ms, cb) { if (API) api(method, path, body, ms, cb); else fake(path, body, cb); }
+
+  // ---------- 畫面 ----------
+  function render() {
+    var h;
+    if (view === 'loading') h = '<div class="spin" aria-hidden="true"></div><p class="lead" style="text-align:center">' + esc(loadingText || '請稍等…') + '</p>';
+    else if (view === 'msg') h = msgHTML();
+    else if (view === 'nocode') h = noCodeHTML();
+    else if (view === 'confirm') h = confirmHTML();
+    else if (view === 'notme') h = notMeHTML();
+    else if (view === 'question') h = questionHTML();
+    else if (view === 'recording') h = recordingHTML();
+    else if (view === 'sending') h = sendingHTML();
+    else if (view === 'fail') h = failHTML();
+    else if (view === 'all') h = allHTML();
+    else if (view === 'mic') h = micHTML();
+    else if (view === 'code') h = codeHTML();
+    else if (view === 'batches') h = batchesHTML();
+    else if (view === 'few') h = fewHTML();
+    else if (view === 'writing') h = writingHTML();
+    else if (view === 'essay') h = essayHTML();
+    else h = classHTML();
+    app.innerHTML = (API ? '' : '<p class="tm" role="note">測試模式：沒有連雲端服務，錄音不會送出</p>') + h;
+    shownAt = Date.now();
+    flash = '';
+    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
+    var f = document.getElementById('qt') || document.getElementById('f_code');
+    if (f) { try { f.focus({ preventScroll: true }); } catch (e) { /* 舊瀏覽器 */ } }
+    growEssay();
+  }
+  function show(v) { view = v; render(); }
+
+  // 擋住的訊息（代碼不對、過期、找不到、連不上…）：一句白話；連不上的有「再試一次」
+  function msgHTML() {
+    return '<h1>' + esc(note.title || '上課心得錄音') + '</h1><div class="box err"><p class="big">' + escBr(note.text) + '</p></div>' +
+      (note.again ? '<button type="button" class="btn" data-act="' + esc(note.act) + '">再試一次</button>' : '') +
+      (mode === 'staff' ? '<div class="foot"><button type="button" class="linkbtn" data-act="list">回名單</button></div>' : '');
+  }
+  function noCodeHTML() {
+    return '<h1>上課心得錄音</h1><p class="lead big">請用手機的相機，<span class="nw">掃小卡上的 QR code。</span></p>' +
+      '<p class="hint">掃了會先看到你的名字。</p>' +
+      '<div class="foot"><button type="button" class="linkbtn" data-act="staff">現場人員用</button></div>';
+  }
+  function confirmHTML() {
+    return '<p class="hello">' + esc(person['姓名']) + ' 您好</p><p class="ask">這是你的名字嗎？</p>' +
+      '<button type="button" class="btn" data-act="yes">是我，開始</button>' +
+      '<button type="button" class="btn btn2" data-act="notme">' + (mode === 'staff' ? '不是我（回名單）' : '不是我（請找現場人員）') + '</button>';
+  }
+  function notMeHTML() {
+    return '<h1>請找現場人員</h1><p class="lead big">這張小卡上<span class="nw">不是你的名字。</span></p>' +
+      '<p class="lead">請把手機拿給現場人員看，<span class="nw">不要錄。</span></p>' +
+      '<button type="button" class="btn btn2" data-act="confirm">回上一頁</button>';
+  }
+  function topHTML() {
+    return '<div class="top"><button type="button" class="back" data-act="prev">' + (q > 1 ? '‹ 上一題' : '‹ 回上一頁') + '</button>' +
+      '<span class="count">第 ' + q + ' 題／共 4 題</span></div>' +
+      '<div class="bar" aria-hidden="true"><span style="width:' + q * 25 + '%"></span></div>';
+  }
+  function questionHTML() {
+    var n = Number(counts()[String(q)]) || 0, h = topHTML(), total = [1, 2, 3, 4].reduce(function (s, k) { return s + (Number(counts()[String(k)]) || 0); }, 0);
+    h += '<p class="who">' + esc(person['姓名']) + (mode === 'staff' ? '（現場人員幫忙錄）' : '') + '</p>';
+    if (flash === 'got') h += '<div class="got" role="status">收到了 ✓<small>這一題已經收到 ' + n + ' 段</small></div>';
+    else if (flash === 'sent') h += '<div class="box ok" role="status"><p>上次還沒傳上去的錄音，已經傳好了 ✓</p></div>';
+    else if (flash) h += '<div class="box warn" role="status"><p>' + escBr(flash) + '</p></div>';
+    h += '<h1 class="qt" id="qt" tabindex="-1">' + esc(person['題目'][q - 1]) + '</h1><p class="tip">' + esc(HINTS[q - 1]) + '</p>';
+    if (n > 0) {
+      if (flash !== 'got') h += '<div class="box ok"><p>✓ 這一題已經收到 ' + n + ' 段</p></div>';
+      h += '<button type="button" class="btn" data-act="next">' + (q < 4 ? '下一題 ›' : '完成 ›') + '</button>' +
+        '<button type="button" class="btn more" data-act="start">' + MIC.replace(/#fff/g, 'currentColor') + '再補充這一題</button>';
+    } else {
+      h += '<button type="button" class="btn rec" data-act="start">' + MIC + '按這裡開始講</button>';
+      if (!total) h += '<p class="small">錄音只用來寫你的心得報告，轉成文字之後就刪掉。</p>';
+    }
+    if (mode === 'staff') h += '<div class="foot"><button type="button" class="linkbtn" data-act="list">回名單</button></div>';
+    return h;
+  }
+  function recordingHTML() {
+    return '<p class="count" style="padding-left:0">第 ' + q + ' 題／共 4 題</p><p class="qs">' + esc(person['題目'][q - 1]) + '</p>' +
+      '<p class="tip">' + esc(HINTS[q - 1]) + '</p>' +
+      '<div class="recbox" role="status"><div class="recnow"><span class="dot" aria-hidden="true"></span>正在錄音</div>' +
+      '<p class="clock" id="clock">0:00</p><p class="goal" id="goal">每一題講 1 分鐘以上最好</p>' +
+      '<p class="left" id="left">最多 5 分鐘</p></div>' +
+      '<p class="lead" style="margin-top:18px">慢慢講，<span class="nw">講完了按下面的按鈕。</span></p>' +
+      '<button type="button" class="btn stop" data-act="stop">' + STOP + '講完了</button>';
+  }
+  function sendingHTML() {
+    return '<h1>正在存你講的話…</h1><div class="spin" aria-hidden="true"></div>' +
+      '<p class="lead">請不要關掉這個畫面。</p>' + (pending.length > 1 ? '<p class="hint">還有 ' + pending.length + ' 段要傳</p>' : '');
+  }
+  function failHTML() {
+    var h = '<h1>' + (note.again ? '還沒有存好' : '這一段沒有存') + '</h1><div class="box err"><p class="big">' + escBr(note.text) + '</p>';
+    if (note.again) h += '<p>錄音還留在這支手機裡。</p>';
+    h += '</div>';
+    if (note.again) {
+      return h + '<button type="button" class="btn" data-act="resend">再試一次</button>' +
+        '<div class="foot"><button type="button" class="linkbtn" data-act="drop">不要這一段了，重新講</button></div>';
+    }
+    return h + '<button type="button" class="btn" data-act="again">好，回到題目</button>';
+  }
+  function allHTML() {
+    return '<div class="got" role="status">全部收到了，<span class="nw">謝謝你！</span></div>' +
+      '<p class="lead">' + esc(person['姓名']) + '，4 題都收到了。</p>' +
+      '<ul class="ticks">' + [1, 2, 3, 4].map(function (n) { return '<li>✓ 第 ' + n + ' 題（' + (Number(counts()[String(n)]) || 0) + ' 段）</li>'; }).join('') + '</ul>' +
+      (mode === 'staff' ? '<button type="button" class="btn" data-act="list">回名單</button>' : '<p class="lead" style="margin-top:20px">可以把這個畫面關掉了。</p>') +
+      '<div class="foot"><button type="button" class="linkbtn" data-act="review">還想補充，回到第 1 題</button></div>';
+  }
+  // 麥克風不能用：大字說請找現場人員；現場人員看的小字寫怎麼處理
+  function micHTML() {
+    var h = '<h1>請找現場人員</h1><div class="box err"><p class="big">' + escBr(note.text) + '</p></div>';
+    if (note.kind === 'line') h += '<p class="hint">（現場人員：請她用手機的相機掃 QR code，不要用 LINE 掃；或用你的手機打開現場版幫她錄。）</p>';
+    else if (note.kind === 'denied') h += '<p class="hint">（現場人員：iPhone 請重新整理這一頁，再按一次「按這裡開始講」，跳出來的問題按「允許」；' +
+      'Android 請點網址左邊的圖示 → 權限 → 麥克風 → 允許。還是不行，就用你的手機打開現場版幫她錄。）</p>';
+    else if (note.kind === 'busy') h += '<p class="hint">（現場人員：請關掉正在用麥克風的程式，例如通話、LINE 語音，再按「再試一次」。）</p>';
+    else h += '<p class="hint">（現場人員：請改用 Safari 或 Chrome 打開這一頁；還是不行，就用你的手機打開現場版幫她錄。）</p>';
+    if (note.kind !== 'old' && note.kind !== 'line') h += '<button type="button" class="btn" data-act="start">再試一次</button>';
+    return h + '<button type="button" class="btn btn2" data-act="back2q">回到題目</button>';
+  }
+  function codeHTML() {
+    var h = '<h1>現場通關碼</h1>';
+    if (codeWhy === 'bad') h += '<div class="box err"><p>' + escBr(note && note.text ? note.text : '通關碼不對，請重新輸入。') + '</p></div>';
+    else h += '<p class="lead">第一次在這支手機使用，<span class="nw">請輸入店裡電腦用的通關碼。</span></p>' +
+      '<p class="hint">輸入一次就會記在這支手機。</p>';
+    return h + '<label class="flabel" for="f_code">現場通關碼（6 位數字）</label>' +
+      '<input type="text" id="f_code" class="field" inputmode="numeric" maxlength="6" autocomplete="off" enterkeyhint="done">' +
+      '<div id="msg" role="alert"></div><button type="button" class="btn" id="codeOk" data-act="codeOk">確定</button>';
+  }
+  function batchesHTML() {
+    var h = '<h1>選梯次</h1><p class="lead">今天要錄哪一梯？</p>';
+    if (!batches.length) return h + '<div class="box warn"><p>試算表上還沒有梯次。</p></div>';
+    return h + '<ul class="list">' + batches.map(function (b) {
+      return '<li><button type="button" class="row" data-act="batch" data-b="' + esc(b['梯次']) + '"><span class="rn">' + esc(b['梯次']) + '</span>' +
+        '<span class="rs">' + esc([b['上課時間'], b['辦訓單位']].filter(Boolean).join('　')) + '</span></button></li>';
+    }).join('') + '</ul>';
+  }
+  function classHTML() {
+    var h = '<div class="bar2"><h1>' + esc(clsBatch) + '</h1><button type="button" class="btn btn2" data-act="reload">重新整理</button></div>';
+    if (flash) h += '<div class="box warn" role="status"><p>' + escBr(flash) + '</p></div>';
+    if (cls['核准函未知']) h += '<p class="hint">（試算表還沒有「核准函」那一欄：看不出誰收到核准，先列出這一梯全部的報名。）</p>';
+    var people = cls['學員'] || [];
+    if (!people.length) h += '<div class="box warn"><p>這一梯沒有要錄的人。</p></div>';
+    else h += '<p class="lead" style="margin-top:14px">點她的名字開始錄：</p><ul class="list">' + people.map(function (p) {
+      var c = p['已錄'] || {}, miss = missingText(c), wait = cls.waits[String(p['編號'])] || 0, n = Number(p['編號']);
+      // 4 題加起來轉成幾個字（錄過才寫）；不到 1,000 字黃色提醒（只是提醒，寫心得那條線字數約是她講的 0.75–0.9 倍）
+      var chars = totalChars(p);
+      var said = miss === '還沒錄' ? '' : '<span class="rc">共 ' + chars.toLocaleString('en-US') + ' 字</span>' +
+        (chars < ENOUGH_CHARS ? '<span class="rp">可以請她再補充</span>' : '');
+      // 核准函不是「收到核准」（要補件、還沒回報…）：只提醒，照樣能點、能錄（Working Rule 9）；試算表沒有這一欄就不寫
+      var ok = !('核准函' in p) || str(p['核准函']).trim() === '收到核准';
+      // 寫成心得：4 題都有錄才能按；印過的改成「看心得、再印」
+      var w = miss ? '<button type="button" class="wbtn" data-act="essay" data-n="' + n + '" aria-disabled="true">4 題錄完才能寫心得</button>'
+        : p['心得印好了'] ? '<button type="button" class="wbtn again" data-act="essay" data-n="' + n + '">看心得、再印</button>'
+          : '<button type="button" class="wbtn" data-act="essay" data-n="' + n + '">寫成心得</button>';
+      return '<li class="prow"><button type="button" class="pick" data-act="pick" data-n="' + n + '"><span class="rn">' + esc(p['姓名']) + '</span>' +
+        (ok ? '' : '<span class="ry">試算表還沒記收到核准</span>') +
+        '<span class="rs' + (miss ? '' : ' done') + '">' + (miss ? esc(miss) : '4 題都錄了 ✓') + '</span>' + said +
+        (wait ? '<span class="rp">這支手機有 ' + wait + ' 段還沒傳上去</span>' : '') +
+        (p['心得印好了'] ? '<span class="rs done">心得印好了 ✓</span>' : '') + '</button>' + w + '</li>';
+    }).join('') + '</ul>';
+    return h + '<div class="foot"><button type="button" class="linkbtn" data-act="batches">換梯次</button></div>';
+  }
+  function totalChars(p) { return [1, 2, 3, 4].reduce(function (s, n) { return s + (Number((p['字數'] || {})[String(n)]) || 0); }, 0); }
+
+  // ---------- 心得（現場人員）：寫成心得 → 看、改字 → 列印（規格 12-9） ----------
+  // 講得比較少（4 題加起來不到 1,000 字）：先問要不要請她補充（只問、不擋）
+  function fewHTML() {
+    return '<h1>她講得比較少</h1><p class="lead big">心得可能不到 800 字，<span class="nw">要先請她補充嗎？</span></p>' +
+      '<p class="hint">' + esc(essay ? essay['姓名'] : '') + '（4 題加起來 ' + (essay ? essay['講的字數'] : 0).toLocaleString('en-US') + ' 字）</p>' +
+      '<button type="button" class="btn" data-act="fewMore">先補充</button>' +
+      '<button type="button" class="btn btn2" data-act="fewWrite">照樣寫</button>' +
+      '<div class="foot"><button type="button" class="linkbtn" data-act="list">回名單</button></div>';
+  }
+  function writingHTML() {
+    return '<h1>正在寫心得…</h1><div class="spin" aria-hidden="true"></div>' +
+      '<p class="lead">' + esc(essay ? essay['姓名'] : '') + '：照她講的寫，<span class="nw">大約半分鐘到一分鐘。</span></p>' +
+      '<p class="lead">請不要關掉這個畫面。</p>';
+  }
+  function essayHTML() {
+    var e = essay, h = '<h1>' + esc(e['姓名']) + '的心得</h1>';
+    h += '<p class="lead" id="essayCount">' + countText(e['心得']) + '</p>';
+    if (e['印好']) {
+      h += '<div class="got" role="status">' + (e.url ? '心得 PDF 好了 ✓' : '上次印好的心得') +
+        (e.url ? '<small>共 ' + (e['頁數'] || 1) + ' 頁' + (TOUCH ? '，請按下面「打開心得 PDF」，在新分頁列印' : '，列印視窗沒出來就按下面的連結') + '</small>' : '<small>要再印就按「列印」</small>') + '</div>';
+      if (e.url) h += '<a class="' + (TOUCH ? 'btn' : 'alt') + '" href="' + e.url + '" target="_blank" rel="noopener">' + (TOUCH ? '打開心得 PDF（新分頁）' : '列印視窗沒有出來？用新分頁打開心得 PDF') + '</a>';
+      if (e['已存雲端'] === false) h += '<div class="box err"><p>這份心得沒有存進雲端硬碟（試算表暫時連不上）：印好之後，等一下再按一次「列印」存起來。</p></div>';
+    }
+    if (e['提醒'] && e['提醒'].length) h += '<div class="box warn"><p>提醒：</p><ul>' + e['提醒'].map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul></div>';
+    h += '<label class="flabel" for="essayText">心得全文（可以直接改字；一段一行）</label>' +
+      '<textarea id="essayText" class="essay" spellcheck="false">' + esc(e['心得']) + '</textarea><div id="msg" role="alert"></div>';
+    if (askRewrite) {
+      h += '<div class="box warn"><p>重寫會照她現在錄的重新寫一份，<span class="nw">畫面上改過的字會不見。</span>要重寫嗎？</p>' +
+        '<button type="button" class="btn" data-act="rewriteYes">確定重寫</button><button type="button" class="btn btn2" data-act="rewriteNo">不要，留著</button></div>';
+    }
+    return h + '<button type="button" class="btn" id="printBtn" data-act="printEssay">' + (printing ? '準備中，請稍等…' : '列印') + '</button>' +
+      '<button type="button" class="btn btn2" data-act="rewrite">重寫（她補錄之後）</button>' +
+      '<div class="foot"><button type="button" class="linkbtn" data-act="list">回名單</button></div>';
+  }
+  function countText(t) {
+    var n = str(t).replace(/\s/g, '').length;
+    return '共 ' + n.toLocaleString('en-US') + ' 字' + (n < 800 ? '（不到 800 字）' : n > 1500 ? '（超過 1,500 字）' : '');
+  }
+  function growEssay() {
+    var t = document.getElementById('essayText');
+    if (t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 6) + 'px'; }
+  }
+  function dropPdf() { if (essay && essay.url) { try { URL.revokeObjectURL(essay.url); } catch (e) { /* 略過 */ } essay.url = ''; } }
+
+  // 名單上按「寫成心得」／「看心得、再印」
+  function startEssay(n) {
+    var p = (cls['學員'] || []).filter(function (x) { return Number(x['編號']) === n; })[0];
+    if (!p || missingText(p['已錄'] || {})) return;   // 4 題還沒錄完：按鈕是灰的
+    dropPdf();
+    essayNo = n;
+    essay = { '編號': n, '姓名': str(p['姓名']), '講的字數': totalChars(p) };
+    askRewrite = false;
+    if (p['心得印好了']) { loadEssay(); return; }
+    if (essay['講的字數'] < ENOUGH_CHARS) { show('few'); return; }
+    writeEssay();
+  }
+  function writeEssay() {
+    dropPdf();
+    askRewrite = false;
+    show('writing');
+    call('POST', '/api/voice/write', JSON.stringify({ '編號': essayNo }), WAIT_MS.write, function (r) {
+      if (!r.ok) {
+        if (r.code === 'store_code') { askCode('bad', r); return; }
+        note = { title: '心得還沒寫好', text: errText(r), again: !!RETRY[r.code], act: 'write' };
+        show('msg');
+        return;
+      }
+      var d = r.data;
+      essay = { '編號': essayNo, '姓名': essay['姓名'], '講的字數': essay['講的字數'], '心得': str(d['心得']), '原文': str(d['心得']),
+        '字數': d['字數'], '提醒': d['提醒'] || [], '句子': d['句子'] || [], '寫的時間': str(d['寫的時間']), '印好': false };
+      show('essay');
+    });
+  }
+  // 印過的：拿上次印的那份（看、再印；不用再叫 AI）。雲端說沒有（例：被刪了）就重寫一份
+  function loadEssay() {
+    loadingText = '讀取心得…';
+    show('loading');
+    call('GET', '/api/voice/essay?編號=' + essayNo, null, WAIT_MS.essay, function (r) {
+      if (!r.ok) {
+        if (r.code === 'store_code') { askCode('bad', r); return; }
+        note = { title: '心得還沒拿到', text: errText(r), again: !!RETRY[r.code], act: 'essayLoad' };
+        show('msg');
+        return;
+      }
+      var c = r.data['心得內容'];
+      if (!c || !str(c['心得'])) { writeEssay(); return; }
+      essay = { '編號': essayNo, '姓名': essay['姓名'], '講的字數': essay['講的字數'], '心得': str(c['心得']), '原文': str(c['原文'] || c['心得']),
+        '字數': c['字數'], '提醒': c['提醒'] || [], '句子': c['句子'] || [], '寫的時間': str(c['寫的時間']), '印好': true };
+      show('essay');
+    });
+  }
+  // 列印：用畫面上的字（現場可能改過）排成 PDF、存進雲端 → 電腦叫出列印視窗；手機、平板用新分頁打開。PDF 只放記憶體
+  function printEssay() {
+    if (printing) return;
+    var t = document.getElementById('essayText'), m = document.getElementById('msg');
+    var text = str(t ? t.value : essay['心得']);
+    if (!text.replace(/\s/g, '')) { if (m) m.innerHTML = '<div class="box err"><p>心得是空的，請按「重寫」。</p></div>'; return; }
+    essay['心得'] = text;
+    printing = true;
+    var b = document.getElementById('printBtn');
+    if (b) b.textContent = '準備中，請稍等…';
+    if (m) m.innerHTML = '';
+    var body = { '編號': essayNo, '心得': text, '原文': essay['原文'], '提醒': essay['提醒'], '句子': essay['句子'], '寫的時間': essay['寫的時間'] };
+    call('POST', '/api/voice/print', JSON.stringify(body), WAIT_MS.print, function (r) {
+      printing = false;
+      if (view !== 'essay') return;
+      if (!r.ok) {
+        if (r.code === 'store_code') { askCode('bad', r); return; }
+        render();
+        var m2 = document.getElementById('msg');
+        if (m2) m2.innerHTML = '<div class="box err"><p>' + escBr('還沒有印：' + errText(r)) + '</p>' +
+          (RETRY[r.code] ? '<button type="button" class="btn" data-act="printEssay">再試一次</button>' : '') + '</div>';
+        return;
+      }
+      dropPdf();
+      var blob = b64Blob(r.data.base64, 'application/pdf');
+      essay.url = blob ? URL.createObjectURL(blob) : '';
+      essay['印好'] = true;
+      essay['頁數'] = r.data['頁數'];
+      essay['已存雲端'] = r.data['已存雲端'];
+      if (r.data['提醒'] && r.data['提醒'].length) essay['提醒'] = essay['提醒'].concat(r.data['提醒']);
+      render();
+      if (essay.url && !TOUCH) printUrl(essay.url);
+    });
+  }
+  function b64Blob(b64, mime) {
+    try {
+      var s = atob(b64), a = new Uint8Array(s.length);
+      for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
+      return new Blob([a], { type: mime });
+    } catch (e) { return null; }
+  }
+  // 隱藏框載入 PDF，載好叫出列印視窗；不能顯示 PDF、出錯、8 秒沒載好 → 新分頁打開（同 index.html）
+  function printUrl(url) {
+    var old = document.getElementById('pframe');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (navigator.pdfViewerEnabled === false) { openTab(url); return; }
+    var fr = document.createElement('iframe'), done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; openTab(url); } }, 8000);
+    fr.id = 'pframe';
+    fr.className = 'pframe';
+    fr.title = '列印用';
+    fr.setAttribute('aria-hidden', 'true');
+    fr.tabIndex = -1;
+    fr.onload = function () {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      setTimeout(function () { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { openTab(url); } }, 300);
+    };
+    fr.src = url;
+    document.body.appendChild(fr);
+  }
+  function openTab(url) {
+    var w = null;
+    try { w = window.open(url, '_blank'); } catch (e) { /* 被擋 */ }
+    var m = document.getElementById('msg');
+    if (!w && m) m.innerHTML = '<div class="box warn"><p>列印視窗叫不出來：請按上面的「用新分頁打開心得 PDF」，在新分頁按列印。</p></div>';
+  }
+
+  // ---------- 學員：問雲端這張卡是誰 ----------
+  function loadWho(path) {
+    loadingText = '請稍等…';
+    show('loading');
+    call('GET', path, null, WAIT_MS.who, function (r) {
+      if (!r.ok) {
+        if (mode === 'staff' && r.code === 'store_code') { askCode('bad', r); return; }
+        note = { text: errText(r), again: !!RETRY[r.code], act: 'who' };
+        show('msg');
+        return;
+      }
+      var d = r.data, qs = Array.isArray(d['題目']) && d['題目'].length === 4 ? d['題目'] : TEST_QS;
+      person = { '編號': Number(d['編號']), '姓名': str(d['姓名']), '梯次': str(d['梯次']), '題目': qs, '已錄': d['已錄'] || {} };
+      idbList(personKey(person), function (list) { pending = list; show('confirm'); });
+    });
+  }
+  function whoPath() { return mode === 'staff' ? '/api/voice/who?編號=' + encodeURIComponent(person['編號']) : '/api/voice/who?t=' + encodeURIComponent(token); }
+
+  // 按了「是我」：這支手機有還沒傳上去的錄音就先傳；之後到第一題還沒講的（4 題都有了就到「全部收到」）
+  function begin() {
+    if (pending.length) { sendAll(function () { flash = 'sent'; goNext(); }); return; }
+    goNext();
+  }
+  function goNext() {
+    var n = firstMissing();
+    if (!n) { show('all'); return; }
+    q = n;
+    show('question');
+  }
+
+  // ---------- 錄音 ----------
+  function pickMime() {
+    if (typeof MediaRecorder.isTypeSupported !== 'function') return '';
+    for (var i = 0; i < MIMES.length; i++) { try { if (MediaRecorder.isTypeSupported(MIMES[i])) return MIMES[i]; } catch (e) { /* 略過 */ } }
+    return '';
+  }
+  function micProblem(kind) {
+    var t = {
+      line: '在 LINE 裡面不能錄音。\n請用手機的相機掃小卡上的 QR code。',
+      denied: '手機沒有讓這個網頁用麥克風。',
+      busy: '找不到麥克風，或麥克風正在被別的程式用。',
+      old: '這支手機的瀏覽器不能錄音。'
+    };
+    note = { text: t[kind] || t.old, kind: kind };
+    show('mic');
+  }
+  function startRec() {
+    if (rec) return;
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function' || typeof MediaRecorder !== 'function') {
+      micProblem(IN_LINE ? 'line' : 'old');
+      return;
+    }
+    rec = { chunks: [], starting: true };
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
+      var mime = pickMime(), mr = null;
+      try { mr = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 64000 } : { audioBitsPerSecond: 64000 }); }
+      catch (e) { try { mr = new MediaRecorder(stream); } catch (e2) { mr = null; } }
+      if (!mr) { stream.getTracks().forEach(function (t) { t.stop(); }); rec = null; micProblem('old'); return; }
+      rec = { stream: stream, mr: mr, chunks: [], mime: mime, t0: Date.now(), timer: 0, lock: null, done: false };
+      mr.ondataavailable = function (e) { if (e.data && e.data.size) rec.chunks.push(e.data); };
+      mr.onstop = function () { finishRec(); };
+      mr.onerror = function () { stopRec(); };
+      try { mr.start(); } catch (e) { stream.getTracks().forEach(function (t) { t.stop(); }); rec = null; micProblem('old'); return; }
+      show('recording');
+      rec.timer = setInterval(tick, 250);
+      try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (l) { if (rec) rec.lock = l; else l.release(); }, function () { /* 不支援 */ }); } catch (e) { /* 不支援 */ }
+    }).catch(function (e) {
+      rec = null;
+      var n = e && e.name;
+      micProblem(IN_LINE ? 'line' : n === 'NotAllowedError' || n === 'SecurityError' ? 'denied' : n === 'NotFoundError' || n === 'NotReadableError' || n === 'AbortError' ? 'busy' : 'old');
+    });
+  }
+  function tick() {
+    if (!rec || !rec.t0) return;
+    var sec = (Date.now() - rec.t0) / 1000, left = MAX_SEC - sec;
+    var c = document.getElementById('clock'), l = document.getElementById('left'), g = document.getElementById('goal');
+    if (c) c.textContent = clock(sec);
+    if (g && sec >= GOAL_SEC && g.className !== 'goal met') { g.textContent = '每一題講 1 分鐘以上最好 ✓'; g.className = 'goal met'; }   // 只是目標，不擋
+    if (l) {
+      l.textContent = left <= SOON_SEC ? '還可以講 ' + Math.max(0, Math.ceil(left)) + ' 秒' : '最多 5 分鐘';
+      l.className = 'left' + (left <= SOON_SEC ? ' soon' : '');
+    }
+    if (left <= 0) stopRec();   // 5 分鐘到了自動停，照常存
+  }
+  function stopRec() {
+    if (!rec || !rec.mr || rec.done) return;
+    rec.done = true;
+    clearInterval(rec.timer);
+    try { if (rec.mr.state !== 'inactive') rec.mr.stop(); else finishRec(); } catch (e) { finishRec(); }
+  }
+  // 停好了：錄音先存進這台手機，再傳上去
+  function finishRec() {
+    if (!rec || rec.finished) return;
+    var r = rec;
+    r.finished = true;
+    rec = null;
+    clearInterval(r.timer);
+    try { r.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { /* 略過 */ }
+    try { if (r.lock) r.lock.release(); } catch (e) { /* 略過 */ }
+    var sec = (Date.now() - r.t0) / 1000;
+    var mime = str((r.chunks[0] && r.chunks[0].type) || r.mr.mimeType || r.mime || 'audio/webm');
+    var blob = new Blob(r.chunks, { type: mime });
+    if (sec < MIN_SEC || !blob.size) {
+      flash = '好像還沒講就停了。\n請再按一次「按這裡開始講」，講完再按「講完了」。';
+      show('question');
+      return;
+    }
+    var fr = new FileReader();
+    fr.onload = function () {
+      var clip = { id: newId(), key: personKey(person), t: mode === 'staff' ? '' : token, n: person['編號'], name: person['姓名'],
+        q: q, mime: mime, buf: fr.result, sec: Math.round(sec), at: Date.now() };
+      pending.push(clip);
+      idbPut(clip);
+      sendAll(function () { flash = 'got'; show('question'); });
+    };
+    fr.onerror = function () { flash = '錄音存不起來，請再講一次。'; show('question'); };
+    fr.readAsArrayBuffer(blob);
+  }
+
+  // ---------- 傳上去：一段一段傳（雲端轉成文字、存進她的紀錄）；全部好了才 after() ----------
+  var sending = false;
+  function sendAll(after) {
+    if (sending) return;
+    if (!pending.length) { after(); return; }
+    sending = true;
+    show('sending');
+    var clip = pending[0];
+    var fr = new FileReader();
+    fr.onload = function () {
+      var b64 = String(fr.result).split(',')[1] || '';
+      var body = { '題': clip.q, mime: clip.mime, base64: b64, id: clip.id, '秒數': clip.sec };
+      if (clip.t) body.t = clip.t; else body['編號'] = clip.n;
+      call('POST', '/api/voice/clip', JSON.stringify(body), WAIT_MS.clip, function (r) {
+        sending = false;
+        if (r.ok) {
+          pending.shift();
+          idbDel(clip.id);
+          if (r.data['已錄']) person['已錄'] = r.data['已錄'];
+          sendAll(after);
+          return;
+        }
+        if (mode === 'staff' && r.code === 'store_code') { askCode('bad', r); return; }   // 通關碼換了：錄音留著，重新輸入
+        if (RETRY[r.code]) { note = { text: errText(r), again: true, after: after }; show('fail'); return; }
+        // 重試也沒用（沒聽到聲音、格式收不了、這一題夠了、卡過期…）：這一段丟掉，請她回到題目
+        pending.shift();
+        idbDel(clip.id);
+        q = clip.q;
+        note = { text: errText(r), again: false };
+        show('fail');
+      });
+    };
+    fr.onerror = function () { sending = false; pending.shift(); idbDel(clip.id); note = { text: '這一段錄音讀不出來，請再講一次。', again: false }; show('fail'); };
+    fr.readAsDataURL(new Blob([clip.buf], { type: clip.mime }));
+  }
+
+  // ---------- 現場人員：通關碼 → 梯次 → 名單 ----------
+  function askCode(why, r) {
+    // 雲端打錯太多次先全部擋（15 分鐘）：記住的通關碼可能是對的，不清掉，只說原因（KNOWN_ISSUES 技術 41 的教訓）
+    if (why === 'bad' && r && /太多次/.test(str(r.msg))) { note = { text: r.msg, again: false }; show('msg'); return; }
+    codeWhy = why;
+    if (why === 'bad') {
+      storeCode = '';
+      saveLocal(CODE_KEY, '');
+      note = { text: /現場通關碼不對/.test(str(r && r.msg)) || !(r && r.msg) ? '通關碼不對，請重新輸入。\n這裡要用店裡電腦的通關碼（學員手機的不行）。' : r.msg };
+    }
+    show('code');
+  }
+  function onCodeOk() {
+    var f = document.getElementById('f_code'), v = half(f ? f.value : '').replace(/\s+/g, ''), m = document.getElementById('msg');
+    if (!/^\d{6}$/.test(v)) { if (m) m.innerHTML = '<div class="box err"><p>通關碼是 6 位數字，請再看一下。</p></div>'; return; }
+    storeCode = v;
+    saveLocal(CODE_KEY, v);
+    loadBatches();
+  }
+  function loadBatches() {
+    loadingText = '讀取梯次…';
+    show('loading');
+    call('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
+      if (!r.ok) {
+        if (r.code === 'store_code') { askCode('bad', r); return; }
+        note = { text: errText(r), again: !!RETRY[r.code], act: 'batches' };
+        show('msg');
+        return;
+      }
+      // 今天上課的排最前面：離今天越近越前面
+      var today = new Date(); today.setHours(0, 0, 0, 0);
+      function far(b) {
+        var m = /^(\d{2,3})\/(\d{1,2})\/(\d{1,2})$/.exec(str(b['開課日']));
+        return m ? Math.abs(new Date(Number(m[1]) + 1911, Number(m[2]) - 1, Number(m[3])) - today) : Infinity;
+      }
+      batches = (Array.isArray(r.data['梯次']) ? r.data['梯次'] : []).filter(function (b) { return b && b['梯次']; })
+        .sort(function (a, b) { return far(a) - far(b); });
+      show('batches');
+    });
+  }
+  function loadClass(b) {
+    clsBatch = b;
+    saveLocal(BATCH_KEY, b);
+    loadingText = '讀取名單…';
+    show('loading');
+    call('GET', '/api/voice/class?梯次=' + encodeURIComponent(b), null, WAIT_MS.cls, function (r) {
+      if (!r.ok) {
+        if (r.code === 'store_code') { askCode('bad', r); return; }
+        note = { text: errText(r), again: !!RETRY[r.code], act: 'reload' };
+        show('msg');
+        return;
+      }
+      cls = r.data;
+      cls.waits = {};
+      idbList('', function (list) {   // 這支手機上還沒傳的（按人數）：名單上標出來，點她的名字就會先傳
+        list.forEach(function (c) { if (c.key && c.key.indexOf('n:') === 0) cls.waits[c.key.slice(2)] = (cls.waits[c.key.slice(2)] || 0) + 1; });
+        show('class');
+      });
+    });
+  }
+  function openList() {
+    person = null; pending = [];
+    dropPdf(); essay = null; askRewrite = false;
+    if (clsBatch) loadClass(clsBatch); else loadBatches();
+  }
+
+  // ---------- 按鈕 ----------
+  app.addEventListener('click', function (e) {
+    var el = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!el || Date.now() - shownAt < GUARD_MS || el.getAttribute('aria-disabled') === 'true') return;
+    var act = el.getAttribute('data-act');
+    if (act === 'yes') begin();
+    else if (act === 'notme') { if (mode === 'staff') openList(); else show('notme'); }
+    else if (act === 'confirm') show('confirm');
+    else if (act === 'start') startRec();
+    else if (act === 'stop') stopRec();
+    else if (act === 'next') {
+      if (q < 4) { q++; show('question'); }
+      else if (allDone()) show('all');
+      else { q = firstMissing(); flash = '還有第 ' + q + ' 題還沒講。'; show('question'); }
+    }
+    else if (act === 'prev') { if (q > 1) { q--; show('question'); } else show('confirm'); }
+    else if (act === 'review') { q = 1; show('question'); }
+    else if (act === 'back2q') show(person ? 'question' : 'confirm');
+    else if (act === 'resend') sendAll(note.after);
+    else if (act === 'drop') {   // 傳不上去的那一段不要了：丟掉，回到那一題重新講
+      var c = pending.shift();
+      if (c) { idbDel(c.id); q = c.q; }
+      if (pending.length) sendAll(goNext); else show('question');
+    }
+    else if (act === 'again') show('question');
+    else if (act === 'who') loadWho(whoPath());
+    else if (act === 'staff') { location.hash = '#' + STAFF_HASH; }
+    else if (act === 'codeOk') onCodeOk();
+    else if (act === 'batches') { clsBatch = ''; saveLocal(BATCH_KEY, ''); loadBatches(); }
+    else if (act === 'batch') loadClass(el.getAttribute('data-b'));
+    else if (act === 'reload') loadClass(clsBatch);
+    else if (act === 'list') openList();
+    else if (act === 'pick') { person = { '編號': Number(el.getAttribute('data-n')) }; loadWho(whoPath()); }
+    else if (act === 'essay') startEssay(Number(el.getAttribute('data-n')));
+    else if (act === 'fewMore') { person = { '編號': essayNo }; essay = null; loadWho(whoPath()); }   // 先補充：到她的錄音
+    else if (act === 'fewWrite' || act === 'write' || act === 'rewriteYes') writeEssay();
+    else if (act === 'essayLoad') loadEssay();
+    else if (act === 'printEssay') printEssay();
+    else if (act === 'rewrite') {   // 改過字又要重寫：先問一下（改的字會不見）
+      if (essay && str(essay['心得']).replace(/\s/g, '') !== str(essay['原文']).replace(/\s/g, '')) { askRewrite = true; render(); }
+      else writeEssay();
+    }
+    else if (act === 'rewriteNo') { askRewrite = false; render(); }
+  });
+  // 心得全文改字：記著（重畫、列印都用畫面上的字），字數跟著變、框跟著長高
+  app.addEventListener('input', function (e) {
+    if (!e.target || e.target.id !== 'essayText' || !essay) return;
+    essay['心得'] = e.target.value;
+    var c = document.getElementById('essayCount');
+    if (c) c.textContent = countText(e.target.value);
+    growEssay();
+  });
+  app.addEventListener('keydown', function (e) {
+    if ((e.key === 'Enter' || e.keyCode === 13) && e.target && e.target.id === 'f_code' && !e.isComposing) { e.preventDefault(); onCodeOk(); }
+  });
+  // 錄音中切到別的 App、螢幕關掉：先停下來，錄到的照常存（iPhone 背景會停麥克風）
+  document.addEventListener('visibilitychange', function () { if (document.hidden && rec && rec.mr) stopRec(); });
+  // 錄音中、傳送中按到重新整理、關掉：先問一下
+  window.addEventListener('beforeunload', function (e) { if (rec || sending || view === 'writing' || printing) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('hashchange', function () { if (!rec && !sending && view !== 'writing') location.reload(); });
+
+  // ---------- 開始 ----------
+  // LINE 裡打開（用 LINE 掃 QR）：多半不能用麥克風 → 加 openExternalBrowser=1 請 LINE 改用手機的瀏覽器開（只試一次，不會一直跳）
+  if (IN_LINE && !/[?&]openExternalBrowser=1/.test(location.search)) {
+    try { location.replace(location.pathname + (location.search ? location.search + '&' : '?') + 'openExternalBrowser=1' + location.hash); return; } catch (e) { /* 照常開 */ }
+  }
+  var hash = location.hash.slice(1);
+  try { hash = decodeURIComponent(hash); } catch (e) { /* 看不懂就照原樣 */ }
+  var m = /(?:^|&)t=([A-Za-z0-9_-]+)/.exec(hash);
+  if (m) { mode = 'student'; token = m[1]; loadWho(whoPath()); }
+  else if (hash === STAFF_HASH) {
+    mode = 'staff';
+    storeCode = loadLocal(CODE_KEY);
+    clsBatch = loadLocal(BATCH_KEY);
+    if (!storeCode) askCode('first');
+    else openList();
+  } else show('nocode');
+})();
+</script>
+</body>
+</html>
