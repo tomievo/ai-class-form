@@ -528,11 +528,12 @@ p.cn{margin:6px 0 2px}
   // ---------- 這位學員的進度存在這台電腦（壞掉也照常填） ----------
   // pos＝畫面；back＝改完要回去的畫面；docs＝勞保檔清單；noLabor＝按了「沒有任何勞保、農保紀錄」（跟 docs 二選一）；batch＝選的梯次；
   // rid、sheet、read、fix＝讀取後的編號、送出的資料表、讀取結果、核對時改的；out＝產生好的申請文件資訊；wait＝等雲端服務時關掉的是哪一步；
-  // pend＝讀取失敗但資料已經存進試算表的編號（再按一次要帶著，雲端服務才不會多存一列）；
+  // pend＝讀取失敗但資料已經存進試算表的編號（再按一次要帶著，雲端服務才不會多存一列）；pendSig＝存進去的那一份的指紋（sigOf：
+  // 再送的跟它一樣才帶 pend，KNOWN 135）；
   // jd＝核對頁最新的判讀（/api/judge 或產生時 409 回的；null＝用讀取時的 read.判讀）。10/15 加的都是選填，舊存檔照樣接著做；
   // need＝產生時被 409「要確認」退回過（雲端那時把試算表狀態改成「要確認」）
   function fresh() {
-    return { v: 7, pos: 0, back: 0, had: {}, a: {}, docs: [], noLabor: false, batch: null, rid: 0, sheet: '', read: null, jd: null, fix: null, out: null, wait: '', pend: 0, need: false };
+    return { v: 7, pos: 0, back: 0, had: {}, a: {}, docs: [], noLabor: false, batch: null, rid: 0, sheet: '', read: null, jd: null, fix: null, out: null, wait: '', pend: 0, pendSig: '', need: false };
   }
   function sanitize(d) {
     var s = fresh();
@@ -568,7 +569,7 @@ p.cn{margin:6px 0 2px}
     }
     if (s.pos === PRINT) { if (d.out && typeof d.out === 'object') s.out = d.out; else s.pos = REVIEW; }
     if (d.wait === 'read' || d.wait === 'gen') s.wait = d.wait;
-    if (Number(d.pend) > 0 && s.pos <= SUBMIT) s.pend = Number(d.pend);
+    if (Number(d.pend) > 0 && s.pos <= SUBMIT) { s.pend = Number(d.pend); s.pendSig = str(d.pendSig); }   // 舊存檔沒有指紋：下一次送出存新的一列
     return s;
   }
   function load() {
@@ -911,7 +912,7 @@ p.cn{margin:6px 0 2px}
     return '<div class="box err"><p>！ ' + escBr(t) + '</p>' +
       (again ? '<button type="button" class="btn" data-act="retry" data-k="' + step + '"' + (attrs || '') + '>再試一次</button>' : '') + '</div>';
   }
-  // 「再試一次」：送出會照舊帶上次存好的編號（state.pend，不會多一列）；產生用同一份核對後的資料
+  // 「再試一次」：送出時答案、檔案都沒改就照舊帶上次存好的編號（state.pend，不會多一列）；產生用同一份核對後的資料
   function retry(el) {
     var k = el.getAttribute('data-k');
     if (k === 'read') onSubmit();
@@ -2456,7 +2457,9 @@ p.cn{margin:6px 0 2px}
       if (!out) { fileGone(gone.k); return; }
       var data = { '送出時間': nowTW(), '姓名': nameOf(), '手機': textOf(qById('phone')), '梯次': state.batch['梯次'],
         '資料表': buildText(), '檔案': out };
-      if (state.pend) data['編號'] = state.pend;   // 上次讀取失敗、資料已經存了：帶編號，不會多存一列
+      // 上次讀取失敗、資料已經存了：這次送的跟存進去的一模一樣才帶編號（不會多存一列）。改過答案、梯次、照片、勞保檔就不帶、
+      // 存成新的一列：帶編號雲端就不再存，試算表那一列會停在舊的答案（舊的那列之後她產出文件時標重複；KNOWN 135）
+      if (state.pend && sigOf(data) === state.pendSig) data['編號'] = state.pend;
       if (!API) {
         console.log('測試模式：沒有連雲端服務。要送出的資料（檔案內容省略）：\n' + JSON.stringify(preview(data), null, 2));
         showMsg('測試模式：沒有連雲端服務，資料沒有送出。\n（要送的內容印在瀏覽器的 console）', 'warn');
@@ -2469,14 +2472,26 @@ p.cn{margin:6px 0 2px}
       api('POST', '/api/read', JSON.stringify(data), WAIT_MS.read, function (r) {
         state.wait = '';
         if (r.ok) { gotRead(r.data); return; }
-        if (r.data && Number(r.data['編號']) > 0) state.pend = Number(r.data['編號']);   // 失敗但已經存進試算表了
+        if (r.data && Number(r.data['編號']) > 0) { state.pend = Number(r.data['編號']); state.pendSig = sigOf(data); }   // 失敗但已經存進試算表了：記住存的是哪一份
         view = 'screen';
         save();
         if (codeRejected(r)) return;
         render();
-        putMsg(errHTML('read', r));   // 「再試一次」＝再按一次送出，會帶 state.pend
+        putMsg(errHTML('read', r));   // 「再試一次」＝再按一次送出，沒改東西會帶 state.pend
       });
     });
+  }
+  // 送出內容的指紋（姓名、手機、梯次、資料表、每個檔案；送出時間、填寫日期不算）：一樣的內容一定一樣，改了一個字、換了檔案就不一樣
+  function sigOf(d) {
+    var parts = [d['姓名'], d['手機'], d['梯次'], str(d['資料表']).replace(/^填寫日期：.*$/m, '')], h = 0, n = 0;
+    arr(d['檔案']).forEach(function (f) { parts.push(f['種類'], f['mime'], f['base64']); });
+    parts.forEach(function (s) {
+      s = str(s);
+      for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+      h = (h * 31 + 1) | 0;   // 欄跟欄隔開
+      n += s.length + 1;
+    });
+    return n + ':' + h;
   }
   function gotRead(d) {
     var rd = { '身分證': obj(d['身分證']), '勞保': obj(d['勞保']), '判讀': obj(d['判讀']) };
