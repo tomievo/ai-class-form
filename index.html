@@ -75,13 +75,19 @@ h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
 .note{display:inline-block;font-size:22px;font-weight:400;color:var(--ink2)}
 .sub2{display:block;margin-top:4px;font-size:20px;font-weight:600;color:var(--ink2)}
 
-/* 梯次：一梯一個大按鈕；不能選的（額滿、已截止）灰底虛線框＋寫原因 */
+/* 梯次：一梯一個大按鈕；不能選的（已寄出、額滿、已截止）灰底虛線框＋寫原因 */
 .bt .t{display:block}
 .b1{display:block;font-size:26px;font-weight:800}
 .b2{display:block;font-size:22px;font-weight:600}
 .b3{display:block;margin-top:4px;font-size:22px;font-weight:800}
 .opt:disabled{border-style:dashed;border-color:#7a7a7a;background:#e6e6e6;color:#333;-webkit-text-fill-color:#333;opacity:1;cursor:not-allowed}
 .opt:disabled .mark{border-color:#7a7a7a;background:#e6e6e6}
+/* 梯次照開課日排、同一個月一段：段落上面一行月份（大字、粗底線，跟核對頁的段落標題同一種） */
+.mon{font-size:26px;font-weight:800;margin:30px 0 12px;padding-bottom:6px;border-bottom:3px solid var(--ink2)}
+.mon:first-child{margin-top:8px}
+/* 梯次名稱、上課時間各自一塊：放不下就整塊換到下一行，不在「115/11/24」「（二）」或「09:00–」後面拆開（一塊比一行還長才在塊裡面換行，不會超出按鈕） */
+.b1>span{display:inline-block}
+@media (max-width:340px){.b1{font-size:24px}}   /* 320 寬：26px 的「115/11/24（二）」差 1px 放不下一行 */
 
 /* 輸入框 */
 .flabel{display:block;font-size:22px;font-weight:800;margin:8px 0}
@@ -429,13 +435,18 @@ p.cn{margin:6px 0 2px}
     if (q.opts) q.opts = q.opts.map(function (o) { return typeof o === 'string' ? { t: o } : o; });
   });
 
-  // 測試模式（SERVICE_URL 空的）用的範例梯次
-  var SAMPLE_BATCHES = [
-    { '梯次': '115/11/18（三）', '開課日': '115/11/18', '星期': '三', '上課時間': '09:00–18:00',
-      '上課地點': '（範例地點）', '辦訓單位': '（範例辦訓單位）', '剩餘': 7, '狀態': '開放報名' },
-    { '梯次': '115/12/16（三）', '開課日': '115/12/16', '星期': '三', '上課時間': '09:00–18:00',
-      '上課地點': '（範例地點）', '辦訓單位': '（範例辦訓單位）', '剩餘': 0, '狀態': '額滿' }
-  ];
+  // 測試模式（SERVICE_URL 空的）用的範例梯次：下個月 18 日、下下個月 16 日各一梯（跟著今天算：已經開課的不列，寫死日期過了就選不到）；
+  // 第二梯報超過名額 10 位，照樣能選（名額只當參考，Tomi 10/20）
+  function sampleBatches() {
+    var t = nowTW(), y = +t.slice(0, 4), m = t.slice(5, 7) - 1;   // 今天（台灣時間）的西元年、月（0 起算）
+    return [[1, 18, 3, '開放報名'], [2, 16, 12, '開放報名']].map(function (x) {
+      var d = new Date(Date.UTC(y, m + x[0], x[1]));   // 跨年 Date 自己會進位
+      var day = ('00' + (d.getUTCFullYear() - 1911)).slice(-3) + '/' + pad(d.getUTCMonth() + 1) + '/' + pad(x[1]);
+      var w = '日一二三四五六'.charAt(d.getUTCDay());
+      return { '梯次': day + '（' + w + '）', '開課日': day, '星期': w, '上課時間': '09:00–18:00',
+        '上課地點': '（範例地點）', '辦訓單位': '（範例辦訓單位）', '名額': 10, '已報人數': x[2], '剩餘': Math.max(10 - x[2], 0), '狀態': x[3] };
+    });
+  }
 
   // ---------- 小工具 ----------
   function esc(s) {
@@ -470,6 +481,8 @@ p.cn{margin:6px 0 2px}
     return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + 'T' +
       pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds()) + '+08:00';
   }
+  // 今天（台灣時間）的民國日期 YYY/MM/DD，跟 normDate 整理過的開課日可以直接比大小
+  function todayTW() { var t = nowTW(); return normDate((t.slice(0, 4) - 1911) + '/' + t.slice(5, 7) + '/' + t.slice(8, 10)); }
   function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
   function arr(v) { return isArr(v) ? v : []; }
   function obj(v) { return v && typeof v === 'object' && !isArr(v) ? v : {}; }
@@ -1075,7 +1088,7 @@ p.cn{margin:6px 0 2px}
     return h + noLaborHTML(false, n > 0);
   }
 
-  // 梯次：一梯一個大按鈕；只有「開放報名」能點
+  // 梯次：一梯一個大按鈕；只有「開放報名」能點。照開課日早到晚、同一個月一段（gotBatches 排好了）
   function openCount() {
     var n = 0;
     arr(batches).forEach(function (b) { if (b['狀態'] === '開放報名') n++; });
@@ -1090,13 +1103,19 @@ p.cn{margin:6px 0 2px}
     if (batchGone) h += '<div class="box warn"><p>原本選的 ' + esc(batchGone) + ' 不能報名了，請重選。</p></div>';
     if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的梯次。</p></div>';
     h += '<div class="opts" role="radiogroup" aria-labelledby="qt">';
+    var year = todayTW().slice(0, 3), month = '';
     batches.forEach(function (b, i) {
+      var d = normDate(b['開課日']);   // gotBatches 只留看得懂的
+      if (d.slice(0, 6) !== month) {   // 換月份：上面一行月份（今年的只寫月；別年的寫民國年，跟梯次名稱一樣用民國）
+        month = d.slice(0, 6);
+        h += '<h3 class="mon">' + (d.slice(0, 3) === year ? '' : Number(d.slice(0, 3)) + ' 年 ') + Number(d.slice(4, 6)) + ' 月</h3>';
+      }
       var ok = b['狀態'] === '開放報名', on = ok && !!state.batch && state.batch['梯次'] === b['梯次'];
-      var left = typeof b['剩餘'] === 'number' ? '還剩 ' + b['剩餘'] + ' 位' : '可以報名';
+      var left = typeof b['已報人數'] === 'number' ? '已報 ' + b['已報人數'] + ' 位' : '可以報名';   // 名額只當參考（Tomi 10/20）
       var say = str(b['梯次']) + ' ' + str(b['上課時間']) + '，' + (ok ? left : (b['狀態'] || '不能報名') + '，不能選');
       h += '<button type="button" class="opt bt" data-act="batch" data-i="' + i + '" role="radio" aria-label="' + esc(say) + '" aria-checked="' + (on ? 'true' : 'false') + '"' + (ok ? '' : ' disabled') + '>' +
         '<span class="mark">' + CHECK + '</span><span class="t">' +
-        '<span class="b1">' + esc(str(b['梯次']) + ' ' + str(b['上課時間'])) + '</span>' +
+        '<span class="b1"><span>' + esc(str(b['梯次'])) + '</span> <span>' + esc(str(b['上課時間'])) + '</span></span>' +
         '<span class="b2">地點：' + esc(b['上課地點'] || '（未定）') + '</span>' +
         '<span class="b2">辦訓單位：' + esc(b['辦訓單位'] || '（未定）') + '</span>' +
         '<span class="b3">' + (ok ? esc(left) : esc(b['狀態'] || '不能報名') + '，不能選') + '</span></span></button>';
@@ -2368,7 +2387,7 @@ p.cn{margin:6px 0 2px}
     var my = ++batchSeq;
     batchLoading = true;
     batchErr = null;
-    if (!API) { setTimeout(function () { if (my === batchSeq) { batchLoading = false; gotBatches(SAMPLE_BATCHES); } }, 200); return; }
+    if (!API) { setTimeout(function () { if (my === batchSeq) { batchLoading = false; gotBatches(sampleBatches()); } }, 200); return; }
     api('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
       if (my !== batchSeq) return;
       batchLoading = false;
@@ -2380,10 +2399,16 @@ p.cn{margin:6px 0 2px}
       refreshBatch();
     });
   }
+  // 只列開課日 ≥ 今天（台灣時間）的；照開課日早到晚排，同一天照雲端給的順序；不能選的也照日期排在原本的位置（10/20）
   function gotBatches(list) {
-    var ok = [], no = [];
-    list.forEach(function (b) { b = obj(b); if (b['梯次']) (b['狀態'] === '開放報名' ? ok : no).push(b); });
-    batches = ok.concat(no);   // 能選的排前面
+    var today = todayTW(), keep = [];
+    list.forEach(function (b, i) {
+      b = obj(b);
+      var d = normDate(b['開課日']);
+      if (b['梯次'] && d && d >= today) keep.push({ b: b, d: d, i: i });
+    });
+    keep.sort(function (x, y) { return x.d < y.d ? -1 : x.d > y.d ? 1 : x.i - y.i; });
+    batches = keep.map(function (x) { return x.b; });
     if (state.batch) {
       var now = null;
       batches.forEach(function (b) { if (b['梯次'] === state.batch['梯次']) now = b; });
