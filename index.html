@@ -305,6 +305,10 @@ p.cn{margin:6px 0 2px}
   var EMPTY = '（未填）';
   var NO_LABOR = '沒有任何勞保、農保紀錄';             // 勞保那一步的按鈕（10/12）
   var NO_LABOR_LINE = '投保紀錄：' + NO_LABOR;          // 按了按鈕，資料表多這一行（規格 2-2）
+  // 她不想拍身分證（10/28，KNOWN 160）：店裡電腦按「身分證欄位留空，之後自己貼影本」（state.noId）→ 不拍照，現場照卡片打字號、
+  // 生日、戶籍地址；資料表多這一行＋那三行（規格 2-2）。雲端不讀身分證、申請表第 2 頁兩格留白，她自己影印貼上
+  var NO_ID = '本人自己影印黏貼';
+  var NO_ID_LINE = '身分證影本：' + NO_ID;
   var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
   var GUARD_MS = 400;    // 換畫面後這段時間內的點擊不算（防連點點到下一題）
   var WAIT_MS = { batches: 45000, read: 120000, gen: 240000, recent: 45000, packet: 90000, judge: 20000 };   // 讀梯次、讀取資料、產生申請文件、列印站的名單和文件、核對頁的預覽最多等多久，超過當沒成功
@@ -353,8 +357,16 @@ p.cn{margin:6px 0 2px}
 
   var QS = [
     // 拍照：檔案存在這台電腦的 IndexedDB；fileKind＝送出時的「種類」
-    { id: 'idFront', type: 'photo', fileKind: '身分證正面', title: '拍身分證正面', hint: '有大頭照的那一面' },
-    { id: 'idBack', type: 'photo', fileKind: '身分證反面', title: '拍身分證反面', hint: '有地址的那一面' },
+    // skip＝她不想拍身分證時不問（不用 when：拍照題照舊不算條件題）
+    { id: 'idFront', type: 'photo', fileKind: '身分證正面', title: '拍身分證正面', hint: '有大頭照的那一面', skip: noIdOn },
+    { id: 'idBack', type: 'photo', fileKind: '身分證反面', title: '拍身分證反面', hint: '有地址的那一面', skip: noIdOn },
+    // 她不想拍身分證（10/28）：改成照卡片打這三題，不進題目輸出（buildText 跟 NO_ID_LINE 一起放）；soft＝寫法怪只提醒一次、不擋
+    { id: 'idNum', type: 'text', req: true, kind: 'idno', short: '身分證字號', when: noIdOn, soft: idNumOdd,
+      title: '身分證字號', hint: '拿她的身分證，照正面打\n英文字母 1 個＋數字 9 個' },
+    { id: 'idBirth', type: 'text', req: true, kind: 'birth', short: '出生日期', when: noIdOn, soft: birthOdd, ph: '例 055/03/12',
+      title: '出生日期', hint: '照身分證正面，寫民國年/月/日' },
+    { id: 'idAddr', type: 'text', req: true, lines: true, short: '戶籍地址', when: noIdOn,
+      title: '戶籍地址', hint: '照身分證背面寫，從縣市寫到幾號幾樓' },
     { id: 'name', type: 'text', req: true, ac: 'name', out: '姓名',
       title: '你的姓名', hint: '跟身分證上的名字一樣' },
     { id: 'phone', type: 'text', req: true, kind: 'tel', out: '手機',
@@ -438,7 +450,7 @@ p.cn{margin:6px 0 2px}
     { id: 'batch', type: 'batch', short: '上課梯次', title: '選上課梯次', hint: '只能選「開放報名」的梯次' }
   ];
 
-  var N = QS.length;      // 29 題（身分證正面、反面＋25 題＋勞保資料＋梯次；10/22 起工作那 6 題改在核對頁卡片上問）
+  var N = QS.length;      // 32 題（身分證正面、反面＋她不拍時打的 3 題＋25 題＋勞保資料＋梯次；10/22 起工作那 6 題改在核對頁卡片上問）
   var SUBMIT = N + 1;     // 確認頁
   var REVIEW = N + 2;     // 核對頁（現場人員）
   var PRINT = N + 3;      // 列印頁
@@ -516,7 +528,8 @@ p.cn{margin:6px 0 2px}
   function isSel(q, o) { return q.type === 'single' ? state.a[q.id] === o.t : selOf(q).indexOf(o.t) >= 0; }
   function textOf(q) {
     var v = state.a[q.id];
-    return q.kind === 'tel' ? normPhone(v) : q.kind === 'email' ? normEmail(v) : clean(v);
+    return q.kind === 'tel' ? normPhone(v) : q.kind === 'email' ? normEmail(v) : q.kind === 'idno' ? normId(v) :
+      q.kind === 'birth' ? normDate(v) || clean(v) : clean(v);
   }
   function followText(q) { return clean(state.a[q.id + '_t']); }
   function showT(o) { return o.t + (o.n ? '（' + o.n + '）' : ''); }
@@ -524,7 +537,7 @@ p.cn{margin:6px 0 2px}
   function nameOf() { return textOf(qById('name')); }
 
   // ---------- 條件題（when；10/22 起沒有題目用，機制留著） ----------
-  function shown(q) { return (!q.when || q.when()) && (!G_TOKEN || G_QS.indexOf(q.id) >= 0); }   // 手機一起報名只問 G_QS 那幾題
+  function shown(q) { return (!q.when || q.when()) && !(q.skip && q.skip()) && (!G_TOKEN || G_QS.indexOf(q.id) >= 0); }   // 手機一起報名只問 G_QS 那幾題
   // 從畫面位置 p 往 d（+1／-1）找第一個要問的題目；超出題目範圍就原樣回傳（0＝開場、N+1＝確認頁）
   function step(p, d) { while (p >= 1 && p <= N && !shown(QS[p - 1])) p += d; return p; }
   // 題號、題數只算要問的：前 upTo 個位置裡有幾題要問
@@ -534,11 +547,34 @@ p.cn{margin:6px 0 2px}
   // 答過沒有（從確認頁改職稱、多出來的條件題還沒答 → 先接著問）；文字題按過「跳過這題」也算答過
   function answered(q) {
     if (q.type === 'range') return !!(clean(state.a[q.id + '_from']) || clean(state.a[q.id + '_to']));
+    if (q.type === 'photo') return !!files[q.id];   // 她不拍身分證又改回來拍（10/28）：從確認頁回去補拍，兩面都要拍到
     return q.type === 'text' ? typeof state.a[q.id] === 'string' : !!state.a[q.id];
   }
   // 從、到：看得懂就整理成 YYY/MM/DD；看不懂（例：只記得年月）照她寫的送（只提醒、不擋）
   function dateOut(v) { var d = normDate(v); return d || clean(v); }
   function rangeOf(q) { return [dateOut(state.a[q.id + '_from']), dateOut(state.a[q.id + '_to'])]; }
+
+  // ---------- 她不想拍身分證（10/28；店裡電腦才有，手機一起報名、平板手機沒有那顆按鈕） ----------
+  function noIdOn() { return state.noId === true; }
+  function noIdOk() { return !G_TOKEN && !TOUCH; }
+  // 身分證字號：1 個英文字母＋1 或 2＋8 個數字，檢查碼算得過（同 判讀.字號正確）
+  function idOk(v) {
+    if (!/^[A-Z][12]\d{8}$/.test(v)) return false;
+    var n = 'ABCDEFGHJKLMNPQRSTUVXYWZIO'.indexOf(v.charAt(0)) + 10, s = Math.floor(n / 10) + (n % 10) * 9;
+    for (var i = 1; i < 9; i++) s += Number(v.charAt(i)) * (9 - i);
+    return (s + Number(v.charAt(9))) % 10 === 0;
+  }
+  // 只提醒、不擋（Working Rule 9）：提醒一次，同樣的字再按一次就照送；雲端判讀還會跟勞保表頭比
+  function idNumOdd() {
+    var v = textOf(qById('idNum'));
+    return v && !idOk(v) ? '「' + v + '」好像不對：\n英文字母 1 個＋數字 9 個，檢查碼算不過。\n請再對一次她的身分證。\n確定沒打錯（例：居留證號），再按一次「' + nextLabel(qById('idNum')) + '」。' : '';
+  }
+  function birthOdd() {
+    var v = clean(state.a.idBirth);
+    return v && normDate(v) === null ? '「' + v + '」看不出是哪一天。\n請寫成像 055/03/12 這樣（民國年/月/日）。\n確定沒打錯，再按一次「' + nextLabel(qById('idBirth')) + '」。' : '';
+  }
+  // 讀取時送的資料表有沒有那一行（核對頁、產生看這個：雲端也是看資料表）
+  function sheetNoId() { return str(state.sheet || buildText()).split('\n').indexOf(NO_ID_LINE) >= 0; }
 
   // ---------- 這位學員的進度存在這台電腦（壞掉也照常填） ----------
   // pos＝畫面；back＝改完要回去的畫面；docs＝勞保檔清單；noLabor＝按了「沒有任何勞保、農保紀錄」（跟 docs 二選一）；batch＝選的梯次；
@@ -550,7 +586,7 @@ p.cn{margin:6px 0 2px}
   // 多人一起報名（10/22，都是選填）：fill＝這位是從手機填好的載進這台電腦的（只問還沒答的題）；
   // 手機上：g＝送出成功拿到的 {no, rid, batch, name}（打開就是「你是第 N 號」）、tok＝那時掃的 QR 代碼
   function fresh() {
-    return { v: 8, pos: 0, back: 0, had: {}, a: {}, docs: [], noLabor: false, batch: null, rid: 0, sheet: '', read: null, jd: null, fix: null, out: null, wait: '', pend: 0, pendSig: '', need: false,
+    return { v: 8, pos: 0, back: 0, had: {}, a: {}, docs: [], noLabor: false, noId: false, batch: null, rid: 0, sheet: '', read: null, jd: null, fix: null, out: null, wait: '', pend: 0, pendSig: '', need: false,
       fill: false, fillQs: [], fillNo: 0, fillName: '', fillRid: 0, g: null, tok: '' };
   }
   function sanitize(d) {
@@ -574,6 +610,7 @@ p.cn{margin:6px 0 2px}
     s.docs = arr(d.docs).filter(function (x) { return x && /^doc_[a-z0-9]+_\d+$/.test(str(x.k)) && typeof x.mime === 'string'; })
       .slice(0, MAX_DOCS).map(function (x) { return { k: x.k, label: str(x.label), mime: x.mime, size: Number(x.size) || 0 }; });
     s.noLabor = d.noLabor === true && !s.docs.length;
+    s.noId = d.noId === true && noIdOk();   // 她不想拍身分證（10/28）：只有店裡電腦
     if (d.batch && typeof d.batch === 'object' && typeof d.batch['梯次'] === 'string') s.batch = d.batch;
     var p = Number(d.pos), b = Number(d.back);
     if (p >= 0 && p <= PRINT && Math.floor(p) === p) s.pos = p;
@@ -719,6 +756,10 @@ p.cn{margin:6px 0 2px}
         lines.push(q.out + '：' + (r[0] || EMPTY), q.out2 + '：' + (r[1] || EMPTY));
       } else lines.push(q.out + '：' + outValue(q));
     });
+    if (state.noId) {   // 她不想拍身分證（10/28）：雲端看到這行就不要身分證照片，身分證照下面三行（現場照卡片打的）
+      lines.push(NO_ID_LINE);
+      [['身分證字號', 'idNum'], ['出生日期', 'idBirth'], ['戶籍地址', 'idAddr']].forEach(function (x) { lines.push(x[0] + '：' + (textOf(qById(x[1])) || EMPTY)); });
+    }
     if (state.noLabor) lines.push(NO_LABOR_LINE);   // 最後一題之後、本人確認之前（雲端看到這行就不要勞保檔）
     lines.push('本人確認：以上都是真實狀況');
     return lines.join('\n');
@@ -1002,6 +1043,7 @@ p.cn{margin:6px 0 2px}
   function lostAt(from, to) {
     for (var p = from; p < to && p <= N; p++) {
       var q = QS[p - 1];
+      if (!shown(q)) continue;   // 她不拍身分證（10/28）：拍照題不問，沒有照片可以弄丟
       if (q.type === 'photo' && state.had[q.id] && !files[q.id]) return p;
       if (q.type === 'docs' && docsLost && !state.noLabor && to <= SUBMIT) return p;
     }
@@ -1049,6 +1091,8 @@ p.cn{margin:6px 0 2px}
     if (q.type === 'batch') h += '<p class="how">點一個梯次</p>';
     if (q.type === 'photo') {
       h += fileHTML(q);
+      if (q.id === 'idFront' && noIdOk() && !state.fill && working !== q.id)   // 10/28：店裡電腦才有（手機填好載進來的不給）；拍過的照片按了會刪掉
+        h += '<button type="button" class="btn btn2 sm" data-act="noId">身分證欄位留空，<span class="nw">之後自己貼影本</span></button>';
     } else if (q.type === 'docs') {
       h += docsHTML(q);
     } else if (q.type === 'batch') {
@@ -1070,6 +1114,8 @@ p.cn{margin:6px 0 2px}
     }
     h += '<div id="msg" role="alert"></div>';
     if (q.type !== 'photo') h += '<button type="button" class="btn" id="next" data-act="next">下一題</button>';   // 拍照題的按鈕在 fileHTML
+    if (q.when === noIdOn) h += '<p class="hint">身分證欄位留空，<span class="nw">之後影印貼在申請表上</span></p>' +
+      '<button type="button" class="linkbtn" data-act="useId">改成拍身分證</button>';
     return h + footHTML(false);
   }
 
@@ -1378,6 +1424,7 @@ p.cn{margin:6px 0 2px}
     return typeof m['要點選'] === 'boolean' ? m['要點選'] && cs.length > 0 : m['一致'] === false && cs.length > 1;
   }
   function photosHTML() {
+    if (sheetNoId()) return '<div class="box warn"><p>身分證欄位留空，<span class="nw">請拿她的卡片對下面的字</span></p></div>';   // 10/28
     var id = IDC(), h = '<div class="idth">';
     [['idFront', '正面', id['正面是身分證']], ['idBack', '反面', id['反面是身分證']]].forEach(function (x) {
       var f = files[x[0]];
@@ -2373,7 +2420,8 @@ p.cn{margin:6px 0 2px}
     var p = step(state.pos + 1, 1);
     if (state.fill && !state.back) p = nextGap(p);   // 手機填好、載進這台電腦的（一起報名）：答過的題跳過
     if (state.back) {
-      if (!(p < state.back && p <= N && QS[p - 1].when && !answered(QS[p - 1]))) p = lostAt(p, state.back) || state.back;
+      var pq = QS[p - 1];   // 還沒拍的身分證（她不拍又改回來拍，10/28）也先接著問
+      if (!(p < state.back && p <= N && (pq.when || pq.type === 'photo') && !answered(pq))) p = lostAt(p, state.back) || state.back;
       if (p === state.back) state.back = 0;
     }
     go(p);
@@ -2441,6 +2489,10 @@ p.cn{margin:6px 0 2px}
     if (q.type === 'range') {   // 日期寫法看不懂：提醒一次，同樣的字再按一次就照寫（不擋）
       var odd = rangeOdd(q), key = state.a[q.id + '_from'] + '|' + state.a[q.id + '_to'];
       if (odd && softOk !== key) { softOk = key; showMsg(odd, 'warn'); return; }
+    }
+    if (q.soft) {   // 她不拍身分證時打的字號、生日（10/28）：同上
+      var warn = q.soft(), sk = q.id + '|' + state.a[q.id];
+      if (warn && softOk !== sk) { softOk = sk; showMsg(warn, 'warn'); return; }
     }
     if (q.type === 'docs') docsLost = 0;
     if (q.when && q.type === 'text' && typeof state.a[q.id] !== 'string') { state.a[q.id] = ''; save(); }   // 跳過也算答過（answered）
@@ -2573,6 +2625,21 @@ p.cn{margin:6px 0 2px}
     render();
     if (state.noLabor) scrollToEl(document.getElementById('next'));
   }
+  // 她不想拍身分證（10/28）：拍過的照片刪掉（不留在這台電腦），改問字號、生日、戶籍地址；「改成拍身分證」回第 1 題，打的字清掉
+  function onNoId() {
+    var q = curQ();
+    if (!q || q.id !== 'idFront' || !noIdOk() || state.fill || working) return;
+    ['idFront', 'idBack'].forEach(function (k) { dropFile(k); idbDel(k); delete state.had[k]; });
+    state.noId = true;
+    advance();
+  }
+  function onUseId() {
+    var q = curQ();
+    if (!q || q.when !== noIdOn) return;
+    state.noId = false;
+    ['idNum', 'idBirth', 'idAddr'].forEach(function (k) { delete state.a[k]; });
+    go(1);
+  }
   function undoc(k) {
     state.docs = state.docs.filter(function (x) { return x.k !== k; });
     dropFile(k);
@@ -2648,8 +2715,8 @@ p.cn{margin:6px 0 2px}
       var err = shown(QS[i]) ? check(QS[i]) : '';   // 條件題沒問的不檢查
       if (err) { state.back = SUBMIT; go(i + 1); showMsg('這題還沒填好：' + err); return; }
     }
-    // 按了「沒有任何勞保、農保紀錄」：只送身分證兩張（資料表多一行 NO_LABOR_LINE）
-    var list = [{ k: 'idFront', kind: '身分證正面' }, { k: 'idBack', kind: '身分證反面' }]
+    // 按了「沒有任何勞保、農保紀錄」：只送身分證兩張（資料表多一行 NO_LABOR_LINE）；她不拍身分證（10/28）：不送身分證
+    var list = (state.noId ? [] : [{ k: 'idFront', kind: '身分證正面' }, { k: 'idBack', kind: '身分證反面' }])
       .concat(state.noLabor ? [] : state.docs.map(function (x) { return { k: x.k, kind: '勞保資料' }; }));
     busy = true;
     makeFiles(list, function (out, gone) {
@@ -2850,7 +2917,7 @@ p.cn{margin:6px 0 2px}
     if (!seenOk()) { showMsg('還沒請她看過基本資料、切結書。\n請把畫面轉給她看、唸給她聽，她說都對，按上面的「基本資料、切結書都唸給她聽過，她說都對」。'); return; }
     clearTimeout(jdTimer); jdTimer = 0; jdSeq++; jdPend = false;   // 預覽不用再算了：產生時雲端會用核對後重新判讀
     busy = true;
-    makeFiles([{ k: 'idFront', kind: '身分證正面' }, { k: 'idBack', kind: '身分證反面' }], function (out, gone) {
+    makeFiles(sheetNoId() ? [] : [{ k: 'idFront', kind: '身分證正面' }, { k: 'idBack', kind: '身分證反面' }], function (out, gone) {   // 她不拍身分證：不送
       busy = false;
       if (!out) { fileGone(gone.k); return; }
       var data = { '編號': state.rid, '梯次': state.batch ? state.batch['梯次'] : '', '資料表': state.sheet || buildText(),
@@ -3343,7 +3410,7 @@ p.cn{margin:6px 0 2px}
     return null;
   }
   var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, edit: 1, batch: 1, gen: 1, codeOk: 1, endAsk: 1, nextAsk: 1, reeditAsk: 1,
-    station: 1, stPrint: 1, retry: 1, noLabor: 1 };
+    station: 1, stPrint: 1, retry: 1, noLabor: 1, noId: 1, useId: 1 };
 
   app.addEventListener('click', function (e) {
     var el = actEl(e.target);
@@ -3361,6 +3428,8 @@ p.cn{margin:6px 0 2px}
       case 'edit': state.back = SUBMIT; go(Number(el.getAttribute('data-q'))); break;
       case 'undoc': undoc(el.getAttribute('data-k')); break;
       case 'noLabor': onNoLabor(); break;
+      case 'noId': onNoId(); break;
+      case 'useId': onUseId(); break;
       case 'batch': onBatch(Number(el.getAttribute('data-i'))); break;
       case 'reloadBatches': loadBatches(); render(); break;
       case 'code': askCode('change'); break;
