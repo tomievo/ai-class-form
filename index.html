@@ -182,6 +182,7 @@ textarea.inp{resize:vertical}
 .tags,.ftxt{grid-column:2}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
 .ftxt{margin:0;font-size:20px;font-weight:800;color:var(--err)}
+.areat{margin:-4px 0 10px calc(4.6em + 10px);font-size:20px;font-weight:800;color:var(--err)}   /* 高屏澎東的梯次、通訊地址在別區（KNOWN 167） */
 .two{display:grid;grid-template-columns:minmax(0,1fr);gap:0 18px}
 @media (min-width:600px){.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .idth{display:flex;gap:12px;margin:8px 0}
@@ -1481,9 +1482,25 @@ p.cn{margin:6px 0 2px}
     return '<h2 class="st">基本資料（拿她的身分證對）</h2>' + photosHTML() +
       basicRow('姓名') + basicRow('身分證字號') + basicRow('出生日期') + addrRow() +
       '<div class="brow">' + fixField('通訊地址', '通訊地址', { lines: true, need: true }) +
+      '<div id="areabox">' + areaHTML() + '</div>' +
       fixField('郵遞區號', '郵遞區號', { im: 'numeric', ph: '通訊地址的，例 820' }) +   // 郵遞區號空白不擋：申請表那格留白手寫
       fixField('ans.email', 'Email', { im: 'email', ph: '申請表要印，請跟她核對' }) + '</div>';   // 10/22：打錯直接改，不用回確認頁
   }
+  // ---------- 高屏澎東的梯次：通訊地址要在高雄、屏東、澎湖、台東（Tomi 2026-11-06，KNOWN 167：規則 9「只提醒、不擋」的例外） ----------
+  // 通訊地址在別的分署，高雄分署會轉過去、那邊要她重補資料，審不完就上不了這一梯 → 擋到改成親友、娘家能收信的地址才能產生。
+  // 縣市怎麼認跟雲端 app.py 收件分署()、後台 cohort-model.js branchOffice 同一條：寫了「縣市名＋市或縣」、臺當台，只認得到一個分署才算。
+  // 雲嘉南、認不出縣市的梯次不檢查；通訊地址認不出縣市（沒寫縣市）也擋，請她寫到縣市。同身分證地址的，讀取時雲端已把戶籍地址填進這一格
+  var OFFICE_COUNTIES = { '高屏澎東': ['高雄', '屏東', '澎湖', '台東'], '雲嘉南': ['雲林', '嘉義', '台南'] };
+  function officeOf(place) {
+    var all = [], seen = {}, re = /(高雄|屏東|澎湖|台東|雲林|嘉義|台南)[市縣]/g, m, t = str(place).replace(/臺/g, '台');
+    while ((m = re.exec(t))) Object.keys(OFFICE_COUNTIES).forEach(function (o) { if (OFFICE_COUNTIES[o].indexOf(m[1]) >= 0 && !seen[o]) { seen[o] = 1; all.push(o); } });
+    return all.length === 1 ? all[0] : '';
+  }
+  function areaBad() {
+    return !!state.batch && officeOf(state.batch['上課地點']) === '高屏澎東' && !!clean(state.fix['通訊地址']) && officeOf(state.fix['通訊地址']) !== '高屏澎東';
+  }
+  var AREA_MSG = '她在高雄上課，通訊地址要在高雄、屏東、澎湖、台東：請問她親友、娘家能收信的地址，改好才能產生。';
+  function areaHTML() { return areaBad() ? '<p class="areat">✘ ' + esc(AREA_MSG) + '</p>' : ''; }
   // 打字時：大字的值、哪個按鈕是選的，跟著變（不整頁重畫，游標才不會跑掉）
   function paintBasic(k) {
     var row = document.getElementById('b_' + k), v = fixGet(k);
@@ -2876,8 +2893,8 @@ p.cn{margin:6px 0 2px}
     return m ? { path: m[0], msg: m[1] + '是空的，請照身分證填上（沒有它做不出申請文件）。' } : null;
   }
   // 主按鈕：五格都有字、按了「基本資料、切結書都唸給她聽過，她說都對」才是能按的樣式（打字、點選時跟著變）
-  function genOff() { return missingFix().length > 0 || !seenOk(); }
-  function paintGen() { var b = document.getElementById('gen'); if (b) b.setAttribute('aria-disabled', genOff() ? 'true' : 'false'); }
+  function genOff() { return missingFix().length > 0 || areaBad() || !seenOk(); }
+  function paintGen() { var b = document.getElementById('gen'); if (b) b.setAttribute('aria-disabled', genOff() ? 'true' : 'false'); setHTML('areabox', areaHTML()); }
   // 送出的「核對後」（3-4 的格式；日期整理成 YYY/MM/DD、字號大寫；勞保的「看不清楚」照 AI 原本的清單）。產生、預覽（/api/judge）都送這一份
   function fixOut() {
     var f = state.fix, lb = JSON.parse(JSON.stringify(f['勞保'])), ng = f['未投保工作'], id = IDC(), flags = {};
@@ -2969,6 +2986,7 @@ p.cn{margin:6px 0 2px}
   function onGen() {
     var bad = checkFix();
     if (bad) { showMsg(bad.msg); markErr(bad.path, bad.msg); return; }
+    if (areaBad()) { showMsg(AREA_MSG); var aw = wrapOf('通訊地址'), ai = aw && aw.querySelector('.inp'); if (aw) aw.classList.add('ferr'); if (ai) { try { ai.focus(); } catch (e) { /* 略過 */ } } return; }
     if (!seenOk()) { showMsg('還沒請她看過基本資料、切結書。\n請把畫面轉給她看、唸給她聽，她說都對，按上面的「基本資料、切結書都唸給她聽過，她說都對」。'); return; }
     clearTimeout(jdTimer); jdTimer = 0; jdSeq++; jdPend = false;   // 預覽不用再算了：產生時雲端會用核對後重新判讀
     busy = true;
