@@ -226,6 +226,22 @@ textarea.inp{resize:vertical}
 .ck.pv{font-size:24px;line-height:1.5}
 .ck.pv li{padding:8px 0 8px 42px;border-bottom:2px solid #d6d6d6}
 .ck .src{display:block;margin-top:2px;font-size:19px;font-weight:600;color:var(--ink2)}
+/* 11/08 切結書每一行旁邊「改」（KNOWN 169）：改過的那一行黃框黃底、按鈕寫「已改」；打開的那一行下面是改法（藍框） */
+.ck .pvl{display:flex;align-items:flex-start;gap:12px}
+.ck .pvt{flex:1;min-width:0}
+.ck .pvb{min-width:84px;min-height:56px;margin:0;font-size:22px}
+.ck .pvb.done{border-color:var(--warn);background:var(--warn-bg);color:var(--ink)}
+.ck.pv li.chgd{margin:4px 0;padding-left:50px;padding-right:8px;border:3px solid var(--warn);border-radius:10px;background:var(--warn-bg)}
+.ck.pv li.chgd::before{left:8px}
+.ck.pv li.chgd::after{left:14px}
+.pved{margin:10px 0 4px;padding:8px 12px 12px;border:3px solid var(--pri);border-radius:12px;background:#fff;font-size:22px;font-weight:600}
+.pved .flabel{margin:8px 0 4px}
+.pved .hint{font-size:19px}
+.pvbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-top:10px}
+.pvbar .btn{width:auto;margin:0;padding:8px 28px}
+.pvw{margin:10px 0 0}
+.redo{margin-top:32px}
+.redo .btn{margin-top:10px}
 .more{margin:16px 0;padding:0 14px;border:3px solid var(--line);border-radius:14px}
 .more[open]{padding-bottom:12px}
 .more>summary{display:flex;align-items:center;min-height:64px;font-size:22px;font-weight:800;cursor:pointer;list-style:none}
@@ -599,10 +615,11 @@ p.cn{margin:6px 0 2px}
   // jd＝核對頁最新的判讀（/api/judge 或產生時 409 回的；null＝用讀取時的 read.判讀）。10/15 加的都是選填，舊存檔照樣接著做；
   // need＝產生時被 409「要確認」退回過（雲端那時把試算表狀態改成「要確認」）；
   // 多人一起報名（10/22，都是選填）：fill＝這位是從手機填好的載進這台電腦的（只問還沒答的題）；
-  // 手機上：g＝送出成功拿到的 {no, rid, batch, name}（打開就是「你是第 N 號」）、tok＝那時掃的 QR 代碼
+  // 手機上：g＝送出成功拿到的 {no, rid, batch, name}（打開就是「你是第 N 號」）、tok＝那時掃的 QR 代碼；
+  // made＝這個編號產生過申請文件（11/08，KNOWN 169）：再產生一次時帶 沿用計畫書，雲端用第一次寫的計畫書、不重寫
   function fresh() {
     return { v: 8, pos: 0, back: 0, had: {}, a: {}, docs: [], noLabor: false, noId: false, batch: null, rid: 0, sheet: '', read: null, jd: null, fix: null, out: null, wait: '', pend: 0, pendSig: '', need: false,
-      fill: false, fillQs: [], fillNo: 0, fillName: '', fillRid: 0, g: null, tok: '' };
+      fill: false, fillQs: [], fillNo: 0, fillName: '', fillRid: 0, g: null, tok: '', made: false };
   }
   function sanitize(d) {
     var s = fresh();
@@ -638,6 +655,7 @@ p.cn{margin:6px 0 2px}
       } else s.pos = SUBMIT;
     }
     if (s.pos === PRINT) { if (d.out && typeof d.out === 'object') s.out = d.out; else s.pos = REVIEW; }
+    s.made = d.made === true && s.pos >= REVIEW;   // 產生過（11/08）：核對頁、列印頁才有意義
     if (d.wait === 'read' || d.wait === 'gen') s.wait = d.wait;
     if (Number(d.pend) > 0 && s.pos <= SUBMIT) { s.pend = Number(d.pend); s.pendSig = str(d.pendSig); }   // 舊存檔沒有指紋：下一次送出存新的一列
     s.fill = d.fill === true;   // 多人一起報名（10/22）的選填欄
@@ -1290,6 +1308,7 @@ p.cn{margin:6px 0 2px}
     f['最後工作'] = (j['來源'] === '勞保' && str(j['鍵'])) || j['來源'] === '新增' ? { '來源': j['來源'], '鍵': str(j['鍵']), '單位': str(j['單位']),
       '自己開的店': own === true || own === false ? own : null, '店後來': afterOk(j['店後來']) ? j['店後來'] : '',
       '職稱': str(j['職稱']), '工作內容': str(j['工作內容']), '公保軍保': gov === true || gov === false ? gov : null } : null;
+    f['切結改'] = pvShape(f['切結改']);   // 11/08：切結書每一行現場改的（KNOWN 169）
     return f;
   }
   function afterOk(v) { return STORE_AFTER.some(function (a) { return a[0] === v; }); }
@@ -1312,7 +1331,7 @@ p.cn{margin:6px 0 2px}
   // 欄位路徑：姓名、身分證字號、出生日期、戶籍地址、通訊地址、郵遞區號；lh.<欄>＝勞保表頭；md.<列>.<欄>＝勞保明細；
   // nb.<列>.<欄>＝農保明細；lastTitle＝舊雲端的職稱；ng.<欄>＝新增的那份（沒保勞保：機構、起、迄；舊雲端還有職稱）；
   // job.職稱＝選定那份的職稱（10/22，點了「其他」打的字）；dutyOther、leaveOther＝主要做什麼、為什麼離開選「其他」寫的字；
-  // hw.<欄>＝她的話；ans.<題目 id>＝核對頁直接改的表單答案（email、place、wantJob_t）
+  // hw.<欄>＝她的話；ans.<題目 id>＝核對頁直接改的表單答案（email、place、wantJob_t）；pv.<行>.<欄>＝切結書那一行現場改的（11/08）
   function fixGet(path, src) {
     var p = path.split('.');
     if (src) {   // 讀取時的原值：看改過沒有
@@ -1322,7 +1341,7 @@ p.cn{margin:6px 0 2px}
       if (p[0] === 'lastTitle') return jobCand() ? defTitle(jobCand()) : str(lastCo(J0())['職稱']);   // 選定那份的預設職稱
       if (p[0] === 'ng') return ngPre()[p[1]];   // 預填的值（讀取時判讀的）
       if (p[0] === 'ans') return ANS[p[1]] ? sheetAns(ANS[p[1]]) : '';   // 送出的資料表那一題
-      if (p[0] === 'hw' || p[0] === 'leaveOther' || p[0] === 'dutyOther' || p[0] === 'job') return '';
+      if (p[0] === 'hw' || p[0] === 'leaveOther' || p[0] === 'dutyOther' || p[0] === 'job' || p[0] === 'pv') return '';
       if (p[0] === '通訊地址' || p[0] === '郵遞區號') return str(J0()[p[0]]);
       return sugOf(J0(), IDC(), p[0]);   // 姓名、字號、生日：系統預設的；戶籍地址：AI 讀的
     }
@@ -1337,6 +1356,7 @@ p.cn{margin:6px 0 2px}
     if (p[0] === 'leaveOther') return multiParse(LEAVE, leaveStr()).other;
     if (p[0] === 'dutyOther') return multiParse(DUTY, obj(selJob())['工作內容']).other;
     if (p[0] === 'ans') return str(state.a[p[1]]);
+    if (p[0] === 'pv') return pvVal(p[1], p[2]);
     return str(f[p[0]]);
   }
   function setFix(path, v) {
@@ -1351,11 +1371,12 @@ p.cn{margin:6px 0 2px}
     else if (p[0] === 'leaveOther') { L = multiParse(LEAVE, leaveStr()); f['離開原因'] = multiBuild(LEAVE, L.sel, v); }
     else if (p[0] === 'dutyOther') { if (w) { L = multiParse(DUTY, w['工作內容']); w['工作內容'] = multiBuild(DUTY, L.sel, v); } }
     else if (p[0] === 'ans') state.a[p[1]] = v;
+    else if (p[0] === 'pv') { if (!PV()[p[1]] || PV()[p[1]]['勾'] !== '勾') PV()[p[1]] = pvMake(p[1], '勾'); PV()[p[1]][p[2]] = v; }   // 打字＝這一行勾、照打的印
     else f[p[0]] = v;
   }
   function normFix(path, v) {
     var k = path.split('.').pop();
-    if (/日期$/.test(k) || path === 'ng.起' || path === 'ng.迄') { var d = normDate(v); return d === null ? v : d; }
+    if (/日期$/.test(k) || path === 'ng.起' || path === 'ng.迄' || /^pv\.[^.]+\.(日|起|迄)$/.test(path)) { var d = normDate(v); return d === null ? v : d; }
     if (k === '身分證字號') return normId(v);
     if (k === '郵遞區號') return digits(v);
     if (path === 'ans.email') return normEmail(v);
@@ -1402,12 +1423,13 @@ p.cn{margin:6px 0 2px}
   function factsHTML(j) {
     // 工會漁會的「迄」：今日＝還在保；日期＝已經退保的農保，切結書照實寫起訖（10/12）；舊雲端沒有這一欄＝今日
     var u = j['工會漁會'], to = str(obj(u)['迄']), age = str(j['年齡']), h = '';
-    var blank = obj(obj(j['切結預覽'])['工會'])['迄'] === '';   // 10/23 起每個地區：切結書迄日留白、現場照上課地區手寫
+    // 10/23 起每個地區：切結書迄日留白、現場照上課地區手寫。11/08：看系統算的那份（切結自動）；工會那兩格現場改過，講一聲照上面印
+    var blank = obj(obj(j['切結自動'] || j['切結預覽'])['工會'])['迄'] === '', mine = !!(state.fix && obj(state.fix['切結改'])['工會']);
     [['今天', j['今天']], ['年齡', age ? age + ' 歲' : ''], ['最後工作日', j['最後工作日']],
      ['滿 180 天', j['滿180天日']],
      ['離開職場', j['離開職場']],
      ['工會、農保、漁保', u === null ? '沒有' : obj(u)['名稱'] ? obj(u)['名稱'] + (obj(u)['起'] ? '（切結書：' + obj(u)['起'] + ' 起至' +
-       (to && to !== '今日' ? ' ' + to + ' 止，已退保' : blank ? '＿年＿月＿日止，現場手寫' : '今日') + '）' : '') : '']
+       (to && to !== '今日' ? ' ' + to + ' 止，已退保' : blank ? '＿年＿月＿日止，現場手寫' : '今日') + (mine ? '；那兩格現場改了，照上面印' : '') + '）' : '') : '']
     ].forEach(function (r) { if (str(r[1])) h += '<dt>' + esc(r[0]) + '</dt><dd>' + esc(str(r[1])) + '</dd>'; });
     return h ? '<dl class="facts">' + h + '</dl>' : '';
   }
@@ -1819,22 +1841,139 @@ p.cn{margin:6px 0 2px}
   function twDate(s) { var d = normDate(s); if (!d) return ''; d = d.split('/'); return Number(d[0]) + ' 年 ' + Number(d[1]) + ' 月 ' + Number(d[2]) + ' 日'; }
   function ymd(s) { var d = normDate(s); return d ? Number(d.slice(0, 3)) + d.slice(3) : ''; }   // 小字用：94/03/01
   function pvSig() { return JSON.stringify(J()['切結預覽'] || null); }
+
+  // 11/08（KNOWN 169，Tomi「照這個做」）：每一行旁邊「改」——勾／不勾／留白（她自己勾）、那一行的日期、名稱、台南版工會那四格勾哪一格
+  // 直接改（state.fix 切結改 → 核對後.切結改；雲端照它印，判讀的 切結預覽 就是改好的那份、切結自動 是系統算的）。改過的那一行黃框
+  // 「已改」，「回到自動」拿掉；改了就要請她再看一次。跟勞保對不起來雲端回黃色提醒（只提醒、不擋），列在清單下面。
+  // 工會那兩格（目前無加入／投保於…中）只會勾一格：當一行改（兩行的「改」打開同一個）。迄照 10/23 規則留白，不能改。
+  // 舊雲端（判讀沒有 切結自動）不出「改」：送了它也不認
+  var PV_KEYS = ['①', '②', '③', '工會', '非負責人', '知悉親屬條款', '知悉投保單位'];
+  var PV_FIELDS = { '①': ['原因', '日'], '②': ['起', '迄'], '工會': ['名稱', '起', '類型'] };
+  var PV_WHY = ['畢業', '退休/役', '離職', '求職日'], PV_KINDS = ['職業工會', '漁會', '農會', '屬裁減續保身分'];
+  var PV_NOTE = '切結書改了，要請她再看一次、再唸一次。';
+  var pvOpen = '', pvLate = false;   // 打開「改」的那一行；預覽回來時她正在改的格子裡打字：先不重畫，離開那幾格再畫
+  function pvShape(v) {
+    var o = {};
+    v = obj(v);
+    PV_KEYS.forEach(function (k) {
+      var x = obj(v[k]), y;
+      if (['勾', '不勾', '留白'].indexOf(x['勾']) < 0) return;
+      y = { '勾': x['勾'] };
+      (PV_FIELDS[k] || []).forEach(function (f) { if (typeof x[f] === 'string') y[f] = x[f]; });
+      o[k] = y;
+    });
+    return o;
+  }
+  function PV() { return state.fix['切結改']; }
+  function pvCan() { return !!state.fix && !!J()['切結自動']; }
+  function pvAuto() { return obj(J()['切結自動']); }
+  function pvBlank(p, k) { return arr(p['留白']).indexOf(k) >= 0; }
+  // 印出來那一行（p＝切結預覽或切結自動）：勾／不勾／留白。工會：勾＝「投保於…中」，不勾＝「本人目前無加入」
+  function pvStateOf(p, k) {
+    if (pvBlank(p, k)) return '留白';
+    var on = k === '①' ? !!str(p['無工作原因']) : k === '②' ? !!(p['未投保工作'] && typeof p['未投保工作'] === 'object') :
+      k === '③' ? p['逾180日'] === true : k === '工會' ? !!(p['工會'] && typeof p['工會'] === 'object') :
+      k === '知悉投保單位' ? p[k] !== false : p[k] === true;
+    return on ? '勾' : '不勾';
+  }
+  function pvValOf(p, k, f) {
+    if (k === '①') return str(f === '原因' ? p['無工作原因'] : p['無工作起日']);
+    if (k === '②') return str(obj(p['未投保工作'])[f]);
+    if (k === '工會') return str(obj(p['工會'])[f]);
+    return '';
+  }
+  function pvState(k) { var o = PV()[k]; return o ? o['勾'] : pvStateOf(pvAuto(), k); }
+  function pvVal(k, f) { var o = PV()[k]; return o && typeof o[f] === 'string' ? o[f] : pvValOf(pvAuto(), k, f); }
+  // 這一行改成 st：勾的話日期、名稱先帶系統算的（系統那行沒勾就空白、①預設離職），之前打過的照留
+  function pvMake(k, st) {
+    var old = PV()[k] || {}, a = pvAuto(), o = { '勾': st };
+    if (st !== '勾') return o;
+    (PV_FIELDS[k] || []).forEach(function (f) {
+      if (typeof old[f] === 'string') o[f] = old[f];
+      else if (f !== '類型') o[f] = pvValOf(a, k, f);
+    });
+    if (k === '①' && PV_WHY.indexOf(o['原因']) < 0) o['原因'] = '離職';
+    return o;
+  }
+  // 點選改回跟系統算的一樣：拿掉，不標「已改」
+  function pvTidy(k) {
+    var o = PV()[k], a = pvAuto();
+    function d(f, s) { return f === '名稱' ? clean(s) : normDate(s) || clean(s); }
+    if (!o || o['勾'] !== pvStateOf(a, k)) return;
+    if (o['勾'] === '勾' && (PV_FIELDS[k] || []).some(function (f) {
+      return f === '類型' ? '類型' in o : d(f, o[f]) !== d(f, pvValOf(a, k, f));
+    })) return;
+    delete PV()[k];
+  }
+  // 系統算的那一行（小字「系統原本：…」、回到自動的按鈕）
+  function pvSay(k, a) {
+    var s = pvStateOf(a, k), x;
+    if (s !== '勾') return k === '工會' ? '勾「本人目前無加入」' : '不勾';
+    if (k === '①') return '勾「' + str(a['無工作原因']) + '」' + (str(a['無工作起日']) ? ' ' + ymd(a['無工作起日']) : '，日期留白');
+    if (k === '②') { x = obj(a['未投保工作']); return '勾 ' + (ymd(x['起']) || '＿') + '～' + (ymd(x['迄']) || '＿'); }
+    if (k === '工會') { x = obj(a['工會']); return '勾「投保於' + str(x['名稱']) + '中」' + (ymd(x['起']) ? ' ' + ymd(x['起']) + ' 起' : ''); }
+    return '勾';
+  }
+  function pvEditHTML(k, tn) {
+    var st = pvState(k), u = k === '工會', o = PV()[k];
+    var opts = u ? [['勾', '勾「投保於…中」'], ['不勾', '勾「本人目前無加入」'], ['留白', '兩格都留白（她自己勾）']]
+      : [['勾', '勾'], ['不勾', '不勾'], ['留白', '留白（她自己勾）']];
+    function chip(act, v, on, t) {
+      return '<button type="button" class="pk" data-act="' + act + '" data-k="' + esc(k) + '" data-v="' + esc(v) + '" aria-pressed="' + on + '">' + esc(t) + '</button>';
+    }
+    var h = '<div class="pved" id="pved"><p class="flabel">' + (u ? '工會那兩格印出來：' : '這一行印出來：') + '</p><div class="chips">' +
+      opts.map(function (x) { return chip('pvSet', x[0], st === x[0], x[1]); }).join('') + '</div>';
+    if (st === '留白') h += '<p class="hint">' + (u ? '兩格都不勾、名稱日期都不印' : '不勾、不印字') + '，印出來她自己勾、寫（在空格手寫不算塗改）。</p>';
+    if (st === '勾' && k === '①') {
+      h += '<p class="flabel">勾哪一格</p><div class="chips">' + PV_WHY.map(function (x) {
+        return chip('pvWhy', x, pvVal('①', '原因') === x, x === '離職' ? '離職(最後一份工作)' : x); }).join('') + '</div>' +
+        fixField('pv.①.日', '日期', { plain: true, ph: '例 114/12/31（空白＝她手寫）' });
+    }
+    if (st === '勾' && k === '②') h += fixField('pv.②.起', '從', { plain: true, ph: '例 112/03/01（空白＝她手寫）' }) +
+      fixField('pv.②.迄', '到', { plain: true, ph: '例 114/12/31（空白＝她手寫）' });
+    if (st === '勾' && u) {
+      h += fixField('pv.工會.名稱', '名稱', { plain: true, ph: '例 高雄市美容職業工會' }) + fixField('pv.工會.起', '起', { plain: true, ph: '例 114/02/01' }) +
+        '<p class="hint">「至＿年＿月＿日止」照規定留白，現場照上課地區手寫（台南：寫今天）。</p>';
+      if (tn) {
+        var kind = o && '類型' in o ? o['類型'] : null, guess = unionKind(pvVal('工會', '名稱'));
+        h += '<p class="flabel">台南版「□職業工會□漁會□農會□屬裁減續保身分」勾哪一格' +
+          (kind === null ? '（現在照名稱：' + (guess || '認不出來，不勾') + '）' : '') + '</p><div class="chips">' +
+          PV_KINDS.concat(['']).map(function (x) { return chip('pvKind', x, kind === x, x || '留白（她自己勾）'); }).join('') + '</div>';
+      }
+    }
+    return h + '<div class="pvbar"><button type="button" class="btn btn2 sm" data-act="pvDone">好了</button>' +
+      (o ? '<button type="button" class="linkbtn" data-act="pvAuto" data-k="' + esc(k) + '">回到自動（系統算的：' + esc(pvSay(k, pvAuto())) + '）</button>' : '') +
+      '</div></div>';
+  }
+  // 現場改的跟勞保、規則對不起來（雲端黃色提醒裡講「現場改」那幾條、日期看不懂的）：列在清單下面，改的人馬上看得到
+  function pvWarnHTML(j) {
+    var ws = arr(j['標記']).map(str).filter(function (s) { return /^切結書/.test(s) && (s.indexOf('現場改') >= 0 || s.indexOf('看不懂（要像') >= 0); });
+    return ws.length ? '<div class="box warn pvw"><p>現場改的，跟勞保或規定對不起來（只提醒，照樣能產生）：</p>' + listHTML(ws) + '</div>' : '';
+  }
   function previewHTML() {
     var tn = classOffice() === '雲嘉南';
     var j = J(), p = j['切結預覽'], hand = false, h = '<h3 class="st2">' +
       (tn ? '切結書（台南版，整份第 ' + (sheetNoId() ? 5 : 6) + ' 頁）會這樣印' : '切結書（整份第 5 頁）會這樣印') + '</h3>' +
       '<p class="hint" id="pvst" role="status">' + esc(pvText()) + '</p>';
     if (!p || typeof p !== 'object') return h + factsHTML(j);
-    var co = lastCo(j), ng = obj(j['未投保工作']), w = obj(selJob()), u = obj(p['工會']);
-    var one = !!str(p['無工作原因']), two = p['未投保工作'] && typeof p['未投保工作'] === 'object' ? p['未投保工作'] : null;
-    var retire = str(p['無工作原因']) === '退休/役', who = str(co['機構']) ? '勞保上「' + co['機構'] + '」' : '';
+    var can = pvCan(), pv = can ? PV() : {}, a = pvAuto();
+    var co = lastCo(j), ng = obj(j['未投保工作']), w = obj(selJob()), inU = !!(p['工會'] && typeof p['工會'] === 'object'), u = obj(p['工會']);
+    var why = str(p['無工作原因']), one = !!why, two = p['未投保工作'] && typeof p['未投保工作'] === 'object' ? p['未投保工作'] : null;
+    var retire = why === '退休/役', who = str(co['機構']) ? '勞保上「' + co['機構'] + '」' : '';
     var job = '她說的最後一份工作（' + (clean(ng['職稱']) || clean(w['職稱']) || '職稱還沒填') + (clean(ng['機構']) ? '，在' + clean(ng['機構']) : '') +
       (w['公保軍保'] === true ? '，保公保或軍保' : '') + '）';
     function day(s) { var t = twDate(s); if (!t) hand = true; return t || '＿年＿月＿日'; }
     function box(on, t) { return (on ? '☑' : '☐') + t; }
-    function li(on, big, small) {
-      return '<li class="' + (on ? 'y' : 'n') + '"><span class="vh">' + (on ? '勾：' : '不勾：') + '</span>' + esc(big) +
-        (small ? '<span class="src">' + esc(small) + '</span>' : '') + '</li>';
+    // k＝這一行的「改」（工會那兩行同一個；noEd＝改法畫在下一行）。現場改過：小字換成「現場改的（系統原本：…）」；留白：講她自己勾
+    function li(k, on, big, small, noEd) {
+      var chg = !!(k && pv[k]), open = can && k && pvOpen === k && !noEd, blank = k && pvBlank(p, k);
+      if (blank) small = '留白（現場改的）：' + (k === '工會' ? '兩格都沒勾、沒印字，她自己勾一格、寫' : '沒勾、沒印字，她自己勾、寫');
+      else if (chg) small = '現場改的（系統原本：' + pvSay(k, a) + '）';
+      var r = '<li class="' + (on ? 'y' : 'n') + (chg ? ' chgd' : '') + '"><div class="pvl"><div class="pvt"><span class="vh">' +
+        (on ? '勾：' : blank ? '留白：' : '不勾：') + '</span>' + esc(big) + (small ? '<span class="src">' + esc(small) + '</span>' : '') + '</div>';
+      if (can && k) r += '<button type="button" class="edit pvb' + (chg ? ' done' : '') + '" data-act="pvOpen" data-k="' + esc(k) + '" aria-expanded="' +
+        (pvOpen === k) + '">' + (chg ? '已改' : '改') + '</button>';
+      return r + '</div>' + (open ? pvEditHTML(k, tn) : '') + '</li>';
     }
     var src1 = !one ? '不勾：' + (two ? '她的最後一份工作沒保勞保（勾下一行）' : '沒有要寫的') :
       !str(p['無工作起日']) ? '日期留白：' + (who ? who + '還在保' : '不知道哪天離開') + '，問她哪天離職，印出來她手寫' :
@@ -1844,28 +1983,30 @@ p.cn{margin:6px 0 2px}
       (ymd(two['起']) || '＿') + '～' + (ymd(two['迄']) || '＿') + '：' + job + (!two['起'] || !two['迄'] ? '；空著的日期印出來她手寫' : '');
     var late = str(j['滿180天日']) && str(j['今天']) && str(j['滿180天日']) > str(j['今天']);
     var uKind = arr(j['投保鏈']).some(function (c) { c = obj(c); return c['投保單位'] === u['名稱'] && c['類型'] === '農會'; }) ? '農保' : '勞保';
-    var tk = tn && str(u['名稱']) ? unionKind(u['名稱']) : '';   // 台南版工會那行勾哪一格
+    var kSet = '類型' in u, tk = tn && inU ? (kSet ? str(u['類型']) : unionKind(u['名稱'])) : '';   // 台南版工會那行勾哪一格（現場點的優先）
+    var uBlank = pvBlank(p, '工會');
     h += '<ul class="ck pv">' +
-      li(one, '自 ' + (one ? day(p['無工作起日']) : '＿年＿月＿日') + ' ' + box(false, '畢業') + ' ' + box(one && retire, '退休/役') + ' ' +
-        box(one && !retire, '離職(最後一份工作)') + ' ' + box(false, '求職日') + ' 至今確實無工作。', src1) +
-      li(!!two, '自 ' + (two ? day(two['起']) : '＿年＿月＿日') + '至 ' + (two ? day(two['迄']) : '＿年＿月＿日') + '止有實際工作而未投保。', src2) +
-      li(p['逾180日'] === true, '退出職場已逾一百八十日以上。', '人人都勾' +
+      li('①', one, '自 ' + (one ? day(p['無工作起日']) : '＿年＿月＿日') + ' ' + box(why === '畢業', '畢業') + ' ' + box(retire, '退休/役') + ' ' +
+        box(why === '離職', '離職(最後一份工作)') + ' ' + box(why === '求職日', '求職日') + ' 至今確實無工作。', src1) +
+      li('②', !!two, '自 ' + (two ? day(two['起']) : '＿年＿月＿日') + '至 ' + (two ? day(two['迄']) : '＿年＿月＿日') + '止有實際工作而未投保。', src2) +
+      li('③', p['逾180日'] === true, '退出職場已逾一百八十日以上。', '人人都勾' +
         (late ? '（' + twDate(j['滿180天日']) + '才滿 180 天，照樣勾）' : '')) +
-      li(!str(u['名稱']), '本人目前無加入職業工會、農會、漁會或裁減續保中。', str(u['名稱']) ? '不勾（下一行）' : '勞保、農保上現在沒有保工會、農保、漁保') +
-      li(!!str(u['名稱']), '本人自 ' + (str(u['名稱']) ? day(u['起']) : '＿年＿月＿日') + '起至' +
-        (!str(u['名稱']) ? ' ＿年＿月＿日' : u['迄'] === '' ? ' ' + day('') : u['迄'] && u['迄'] !== '今日' ? ' ' + day(u['迄']) : '今日') +
-        (tn ? '止，投保於' + (str(u['名稱']) || '＿＿＿') + ' ' + ['職業工會', '漁會', '農會', '屬裁減續保身分'].map(function (k) {
+      li('工會', !inU && !uBlank, '本人目前無加入職業工會、農會、漁會或裁減續保中。', inU ? '不勾（下一行）' : '勞保、農保上現在沒有保工會、農保、漁保', true) +
+      li('工會', inU, '本人自 ' + (inU ? day(u['起']) : '＿年＿月＿日') + '起至' +
+        (!inU ? ' ＿年＿月＿日' : u['迄'] === '' ? ' ' + day('') : u['迄'] && u['迄'] !== '今日' ? ' ' + day(u['迄']) : '今日') +
+        (tn ? '止，投保於' + (str(u['名稱']) || '＿＿＿') + ' ' + PV_KINDS.map(function (k) {
           return box(k === tk, k); }).join('') + '中，但確實無工作。' : '止投保於' + (str(u['名稱']) || '＿＿＿') + '中，但確實無工作。'),
-        str(u['名稱']) ? (ymd(u['起']) || '＿') + ' 起：' + uKind + '上「' + u['名稱'] + '」加保那天，現在還在保' +
+        inU ? (ymd(u['起']) || '＿') + ' 起：' + uKind + '上「' + u['名稱'] + '」加保那天，現在還在保' +
           (u['迄'] === '' ? '；「至＿年＿月＿日止」留白：現場照上課地區手寫（台南：寫今天，跟最下面的日期一樣）' : '') +
-          (tn && !tk ? '；看名稱認不出是哪一種，印出來四格都沒勾：請她自己勾一格' : '') : '不勾') +
-      li(p['非負責人'] === true, '本人確實未有依公司法或商業登記法等規定擔任他單位法定負責人之情事。',
+          (tn && !tk ? (kSet ? '；四格都不勾：她自己勾一格' : '；看名稱認不出是哪一種，印出來四格都沒勾：請她自己勾一格') : '') : '不勾') +
+      li('非負責人', p['非負責人'] === true, '本人確實未有依公司法或商業登記法等規定擔任他單位法定負責人之情事。',
         w['店後來'] === '還是她的名字' ? '她開的店還掛她的名字：這一格會不實，請跟她確認' : '報名前已篩過，人人都勾') +
-      li(p['知悉親屬條款'] === true, '本人已知悉申請人不得為雇主或負責人之配偶、直系血親或三親等內之旁系血親。', '人人都勾') +
-      (tn ? li(true, '本人已知悉本要點所定雇主，為就業保險投保單位之民營事業單位、團體或私立學校。', '台南版才有這一條，人人都勾') : '') +
+      li('知悉親屬條款', p['知悉親屬條款'] === true, '本人已知悉申請人不得為雇主或負責人之配偶、直系血親或三親等內之旁系血親。', '人人都勾') +
+      (tn ? li('知悉投保單位', p['知悉投保單位'] !== false, '本人已知悉本要點所定雇主，為就業保險投保單位之民營事業單位、團體或私立學校。', '台南版才有這一條，人人都勾') : '') +
       '</ul>' + (tn ? '<p class="hint">下面印身分證字號、戶籍地址、手機（台南版沒有通訊地址那行）；立書人簽章、日期她手寫。</p>'
         : '<p class="hint">下面印身分證字號、戶籍地址、通訊地址、手機（就是上面那幾行）；立書人簽章、日期她手寫。</p>');
     if (hand) h += '<p class="hint">「＿年＿月＿日」的日期，印出來她手寫。</p>';
+    if (can) h += pvWarnHTML(j);
     return h + factsHTML(j);
   }
 
@@ -1920,7 +2061,8 @@ p.cn{margin:6px 0 2px}
     h += '<div id="msg" role="alert"></div>';
     // 只有一顆主要按鈕：缺姓名、字號、生日、地址，或還沒按「基本資料、切結書都唸給她聽過，她說都對」時是不能按的樣式（按了會說缺什麼）；
     // 退路永遠是下面兩個小字連結，按了確認框（#ask）出現在連結下面。不放「重新填寫」
-    return h + '<button type="button" class="btn" id="gen" data-act="gen" aria-disabled="' + (genOff() ? 'true' : 'false') + '">資料都對，產生申請文件</button>' +
+    return h + '<button type="button" class="btn" id="gen" data-act="gen" aria-disabled="' + (genOff() ? 'true' : 'false') + '">' +
+      (state.made ? '資料都對，再產生一次（計畫書不重寫）' : '資料都對，產生申請文件') + '</button>' +
       '<div class="foot"><button type="button" class="linkbtn" data-act="reeditAsk">回去換檔案或改答案</button>' +
       '<div class="end"><button type="button" class="linkbtn" data-act="endAsk">今天印不了，先換下一位</button>' +
       '<p class="sub2">會清掉這台電腦上她的資料（報名已存，編號 ' + state.rid + '）</p></div></div><div id="ask"></div>';
@@ -2019,7 +2161,7 @@ p.cn{margin:6px 0 2px}
   // 新的判讀回來：只換提醒、預覽、唸給她聽、候選工作（有變才換；選定那份的卡片游標不在裡面才換），不動正在打字的格子
   function paintJudge() {
     setHTML('vbox', verdictHTML(J()));
-    setHTML('preview', previewHTML());
+    if (inPreview()) pvLate = true; else setHTML('preview', previewHTML());   // 正在切結書「改」的格子裡打字：離開那幾格再畫
     setHTML('say', sayHTML(J()));
     if (JSON.stringify(cands() || []) !== shownCands) {
       setHTML('joblist', jobListHTML());
@@ -2033,7 +2175,7 @@ p.cn{margin:6px 0 2px}
   }
   function resetReview() {
     secSeen = [false, false, false]; secCur = 0;
-    opened = {}; lbOpen = null; jobNote = ''; seenNote = ''; shownCands = ''; titleOther = false; wantWarn = ''; seenPv = '';
+    opened = {}; lbOpen = null; jobNote = ''; seenNote = ''; shownCands = ''; titleOther = false; wantWarn = ''; seenPv = ''; pvOpen = ''; pvLate = false;
     clearTimeout(jdTimer); jdTimer = 0; jdSeq++; jdPend = false; jdFail = false; jdTried = false; jdAgain = false; jdOff = false;
   }
 
@@ -2159,6 +2301,38 @@ p.cn{margin:6px 0 2px}
     judgeSoon();
   }
 
+  // ---------- 切結書每一行的「改」（11/08，KNOWN 169）：點選的存檔、整頁重畫、0.5 秒後重算預覽；改了就請她再看一次 ----------
+  function inPreview() {
+    var a = document.activeElement, pv = document.getElementById('preview');
+    return !!(a && pv && pv.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'));
+  }
+  function onPvOpen(k) { pvOpen = pvOpen === k ? '' : k; render(); }
+  function pvChanged() { unsee(PV_NOTE); fixed(); }
+  function onPvSet(k, v) {
+    if (PV_KEYS.indexOf(k) < 0 || ['勾', '不勾', '留白'].indexOf(v) < 0) return;
+    PV()[k] = pvMake(k, v);
+    pvTidy(k);
+    pvChanged();
+  }
+  function onPvWhy(v) {
+    if (PV_WHY.indexOf(v) < 0) return;
+    if (!PV()['①'] || PV()['①']['勾'] !== '勾') PV()['①'] = pvMake('①', '勾');
+    PV()['①']['原因'] = v;
+    pvTidy('①');
+    pvChanged();
+  }
+  // 台南版工會那四格：點一格＝勾那格；再點同一格＝照名稱認（拿掉）；留白＝四格都不勾
+  function onPvKind(v) {
+    if (v && PV_KINDS.indexOf(v) < 0) return;
+    if (!PV()['工會'] || PV()['工會']['勾'] !== '勾') PV()['工會'] = pvMake('工會', '勾');
+    var o = PV()['工會'];
+    if ('類型' in o && o['類型'] === v) delete o['類型']; else o['類型'] = v;
+    pvTidy('工會');
+    pvChanged();
+  }
+  function onPvAuto(k) { delete PV()[k]; pvOpen = ''; pvChanged(); }
+  function onPvDone() { pvOpen = ''; render(); judgeSoon(); }
+
   // ---------- 列印頁 ----------
   // 手機、平板（學員自己的手機）：印表機在店裡的電腦 → 最上面叫她去列印站點自己的名字；這裡的列印按鈕縮小放最下面當退路。
   // 文件沒存進雲端（試算表暫時連不上）列印站就看不到，照舊在這裡印
@@ -2182,8 +2356,17 @@ p.cn{margin:6px 0 2px}
     h += '<h2 class="st">要簽名、手寫的地方</h2>' + (arr(o['簽名處']).length ? '<ol class="plist">' + arr(o['簽名處']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>' : '<p>（沒有資料）</p>');
     if (arr(o['提醒']).length) h += '<h2 class="st">提醒</h2><ul class="plist">' + arr(o['提醒']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
     if (far) h += '<h2 class="st">列印站印不出來的時候</h2>' + btns;
+    // 11/08（KNOWN 169）：印出來才發現切結書勾錯（台南塗改要在旁邊簽名）→ 回核對頁改、再產生一次；計畫書沿用第一次寫的
+    h += '<div class="box warn redo"><p>印出來發現勾錯了？</p><button type="button" class="btn btn2" data-act="redo">回核對頁改，再產生一次（計畫書不重寫）</button></div>';
     h += '<div id="msg" role="alert"></div><button type="button" class="btn" data-act="nextAsk">下一位學員</button><div id="ask"></div>';
     return h;
+  }
+  // 回核對頁改：資料都留著（她說都對要再按一次）；再產生時雲端用第一次寫的計畫書（state.made）
+  function onRedo() {
+    resetReview();
+    unsee('回來改了：改好之後再唸給她聽、請她再看一次，她說都對再按產生。');
+    flash = '回核對頁改：切結書每一行旁邊有「改」。改好之後再唸給她聽、請她再看一次，按「她說都對」，再產生一次（計畫書沿用第一次寫的，不重寫）。';
+    go(REVIEW);
   }
   // 電腦：按鈕→隱藏框直接叫出列印視窗，下面一行退路（新分頁打開）；平板、手機：直接是新分頁打開的連結
   function printBtn(k, label, cls, what) {
@@ -2963,6 +3146,15 @@ p.cn{margin:6px 0 2px}
     if (selOf(qById('wantJob')).indexOf('自己開店或接案') < 0) o['她的話']['想做哪一行'] = '';
     // 核對頁直接改的表單答案（10/22）：雲端蓋過資料表那一題（判讀的提醒、寫手、申請表 Email 都用這份）
     o['表單回答'] = { 'Email': textOf(qById('email')), '想做的工作': outValue(qById('wantJob')), '希望上班地點': textOf(qById('place')) };
+    // 切結書現場改的（11/08，KNOWN 169）：沒改就不送（跟以前的請求一樣）；日期整理成 YYY/MM/DD
+    var pv = f['切結改'], po = {};
+    Object.keys(pv).forEach(function (k) {
+      var x = JSON.parse(JSON.stringify(pv[k]));
+      ['日', '起', '迄'].forEach(function (g) { if (typeof x[g] === 'string') x[g] = d(x[g]); });
+      if (typeof x['名稱'] === 'string') x['名稱'] = clean(x['名稱']);
+      po[k] = x;
+    });
+    if (Object.keys(po).length) o['切結改'] = po;
     return o;
   }
   // 重新判讀的結果（產生時的 409）：換上新的判讀（基本資料的三個來源照舊用讀取時的）。有候選工作 → 選定那份對齊新的候選；
@@ -3018,6 +3210,7 @@ p.cn{margin:6px 0 2px}
       if (!out) { fileGone(gone.k); return; }
       var data = { '編號': state.rid, '梯次': state.batch ? state.batch['梯次'] : '', '資料表': state.sheet || buildText(),
         '核對後': fixOut(), '檔案': out };
+      if (state.made) data['沿用計畫書'] = true;   // 產生過（11/08）：計畫書用第一次寫的，不重寫
       state.wait = 'gen';
       save();
       showWait('gen');
@@ -3064,6 +3257,7 @@ p.cn{margin:6px 0 2px}
     state.out = { '頁數': Number(p['頁數']) || 0, '簽名處': arr(d['簽名處']).map(str), '提醒': arr(d['提醒']).map(str),
       '已存雲端': d['已存雲端'] !== false };   // 沒存進雲端：列印站看不到，手機的列印頁就不叫她去列印站
     pdfLost = false;
+    state.made = true;
     go(PRINT);
   }
 
@@ -3467,7 +3661,7 @@ p.cn{margin:6px 0 2px}
   }
   function askYes(kind) {
     if (kind !== 'reedit') { doRestart('上一位學員的資料已經從這台電腦清掉了。'); return; }
-    state.rid = 0; state.read = null; state.jd = null; state.fix = null; state.out = null; state.sheet = '';
+    state.rid = 0; state.read = null; state.jd = null; state.fix = null; state.out = null; state.sheet = ''; state.made = false;
     resetReview();
     go(SUBMIT);
   }
@@ -3506,7 +3700,7 @@ p.cn{margin:6px 0 2px}
     return null;
   }
   var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, edit: 1, batch: 1, gen: 1, codeOk: 1, endAsk: 1, nextAsk: 1, reeditAsk: 1,
-    station: 1, stPrint: 1, retry: 1, noLabor: 1, noId: 1, useId: 1 };
+    station: 1, stPrint: 1, retry: 1, noLabor: 1, noId: 1, useId: 1, redo: 1 };
 
   app.addEventListener('click', function (e) {
     var el = actEl(e.target);
@@ -3547,6 +3741,13 @@ p.cn{margin:6px 0 2px}
       case 'retry': retry(el); break;
       case 'print': printPdf(el.getAttribute('data-k')); break;
       case 'toReview': go(REVIEW); break;
+      case 'redo': onRedo(); break;
+      case 'pvOpen': onPvOpen(el.getAttribute('data-k')); break;
+      case 'pvSet': onPvSet(el.getAttribute('data-k'), el.getAttribute('data-v')); break;
+      case 'pvWhy': onPvWhy(el.getAttribute('data-v')); break;
+      case 'pvKind': onPvKind(el.getAttribute('data-v')); break;
+      case 'pvAuto': onPvAuto(el.getAttribute('data-k')); break;
+      case 'pvDone': onPvDone(); break;
       case 'endAsk': ask('end'); break;
       case 'secGo': secGo(Number(el.getAttribute('data-i'))); break;
       case 'nextAsk': ask('next'); break;
@@ -3571,6 +3772,7 @@ p.cn{margin:6px 0 2px}
       if (BASIC.indexOf(fp) >= 0) { unsee(); paintBasic(fp); paintSeen(); }   // 基本資料改了：要請她再看一次
       // 切結書的日期跟著變的格子（新增那份的起迄、勞保每一列）：切結書要請她再看一次（10/22 起她看過連切結書一起確認）
       else if (/^(ng\.(起|迄)|md\.|nb\.)/.test(fp)) { unsee('切結書的日期跟著變了，要請她再看一次、再唸一次。'); setHTML('seenbtn', seenBtnHTML()); }
+      else if (/^pv\./.test(fp)) { unsee(PV_NOTE); setHTML('seenbtn', seenBtnHTML()); secPaint(); }   // 切結書那一行打的日期、名稱（11/08）
       save();
       autoGrow(t);
       paintFix(fp);
@@ -3610,6 +3812,14 @@ p.cn{margin:6px 0 2px}
     hideMsg();
     if (q.type === 'docs') takeDocs(q, list);
     else takeFile(q, list[0]);
+  });
+
+  // 切結書「改」的格子打完、游標離開預覽那一塊：打字時晚到的預覽這時才畫（11/08）
+  app.addEventListener('focusout', function (e) {
+    var pv = document.getElementById('preview');
+    if (!pvLate || !pv || !pv.contains(e.target) || (e.relatedTarget && pv.contains(e.relatedTarget))) return;
+    pvLate = false;
+    setTimeout(function () { if (!inPreview()) setHTML('preview', previewHTML()); else pvLate = true; }, 0);
   });
 
   // 核對頁「勞保每一列（AI 讀錯才改）」展開、收起：記著，整頁重畫時照舊
