@@ -1513,20 +1513,22 @@ p.cn{margin:6px 0 2px}
   // 「要，一起做」）。通訊地址在別的分署，這邊會轉過去、那邊要她重補資料，審不完就上不了這一梯 → 擋到改成親友、娘家能收信的地址才能產生。
   // 縣市怎麼認跟雲端 app.py 收件分署()、後台 cohort-model.js branchOffice 同一條：寫了「縣市名＋市或縣」、臺當台，只認得到一個分署才算。
   // 認不出縣市的梯次不檢查；通訊地址認不出縣市（沒寫縣市）也擋，請她寫到縣市。同身分證地址的，讀取時雲端已把戶籍地址填進這一格
-  var OFFICE_COUNTIES = { '高屏澎東': ['高雄', '屏東', '澎湖', '台東'], '雲嘉南': ['雲林', '嘉義', '台南'] };
+  // 中彰投（台中、彰化、南投，2026-11-13 台中合辦）：認得分署（切結書預覽照台中版）；轄區檢查只做 AREA_MSG 有的分署（中彰投 11/13 Tomi 說要）
+  var OFFICE_COUNTIES = { '高屏澎東': ['高雄', '屏東', '澎湖', '台東'], '雲嘉南': ['雲林', '嘉義', '台南'], '中彰投': ['台中', '彰化', '南投'] };
   function officeOf(place) {
-    var all = [], seen = {}, re = /(高雄|屏東|澎湖|台東|雲林|嘉義|台南)[市縣]/g, m, t = str(place).replace(/臺/g, '台');
+    var all = [], seen = {}, re = /(高雄|屏東|澎湖|台東|雲林|嘉義|台南|台中|彰化|南投)[市縣]/g, m, t = str(place).replace(/臺/g, '台');
     while ((m = re.exec(t))) Object.keys(OFFICE_COUNTIES).forEach(function (o) { if (OFFICE_COUNTIES[o].indexOf(m[1]) >= 0 && !seen[o]) { seen[o] = 1; all.push(o); } });
     return all.length === 1 ? all[0] : '';
   }
   function classOffice() { return state.batch ? officeOf(state.batch['上課地點']) : ''; }   // 這一梯的分署；認不出＝''
   function areaBad() {
     var o = classOffice();
-    return !!o && !!clean(state.fix['通訊地址']) && officeOf(state.fix['通訊地址']) !== o;
+    return !!AREA_MSG[o] && !!clean(state.fix['通訊地址']) && officeOf(state.fix['通訊地址']) !== o;
   }
   var AREA_MSG = {
     '高屏澎東': '她在高雄上課，通訊地址要在高雄、屏東、澎湖、台東：請問她親友、娘家能收信的地址，改好才能產生。',
-    '雲嘉南': '她在台南上課，通訊地址要在雲林、嘉義、台南：請問她親友、娘家能收信的地址，改好才能產生。'
+    '雲嘉南': '她在台南上課，通訊地址要在雲林、嘉義、台南：請問她親友、娘家能收信的地址，改好才能產生。',
+    '中彰投': '她在台中上課，通訊地址要在台中、彰化、南投：請問她親友、娘家能收信的地址，改好才能產生。'   // Tomi 2026-11-13「要，跟高雄台南一樣」
   };
   function areaMsg() { return AREA_MSG[classOffice()] || ''; }
   function areaHTML() { return areaBad() ? '<p class="areat">✘ ' + esc(areaMsg()) + '</p>' : ''; }
@@ -1952,9 +1954,9 @@ p.cn{margin:6px 0 2px}
     return ws.length ? '<div class="box warn pvw"><p>現場改的，跟勞保或規定對不起來（只提醒，照樣能產生）：</p>' + listHTML(ws) + '</div>' : '';
   }
   function previewHTML() {
-    var tn = classOffice() === '雲嘉南';
+    var tn = classOffice() === '雲嘉南', tc = classOffice() === '中彰投';   // tc：台中版（中彰投 1-5，11/13）
     var j = J(), p = j['切結預覽'], hand = false, h = '<h3 class="st2">' +
-      (tn ? '切結書（台南版，整份第 ' + (sheetNoId() ? 5 : 6) + ' 頁）會這樣印' : '切結書（整份第 5 頁）會這樣印') + '</h3>' +
+      (tn || tc ? '切結書（' + (tn ? '台南' : '台中') + '版，整份第 ' + (sheetNoId() ? 5 : 6) + ' 頁）會這樣印' : '切結書（整份第 5 頁）會這樣印') + '</h3>' +
       '<p class="hint" id="pvst" role="status">' + esc(pvText()) + '</p>';
     if (!p || typeof p !== 'object') return h + factsHTML(j);
     var can = pvCan(), pv = can ? PV() : {}, a = pvAuto();
@@ -2001,9 +2003,11 @@ p.cn{margin:6px 0 2px}
           (u['迄'] === '' ? '；「至＿年＿月＿日止」留白：請她寫今天，跟最下面的日期一樣' :
             u['迄'] === '今日' ? '；「至今日止」系統印好（高雄、屏東、澎湖、台東上課的梯次），不用寫' : '') +
           (tn && !tk ? (kSet ? '；四格都不勾：她自己勾一格' : '；看名稱認不出是哪一種，印出來四格都沒勾：請她自己勾一格') : '') : '不勾') +
+      (tc ? li('知悉親屬條款', p['知悉親屬條款'] === true, '本人確實非為（公司或用人單位名稱：＿＿＿）雇主或其負責人之配偶、直系血親或三親等內之旁系血親。',
+        '人人都勾；公司或用人單位名稱留白') : '') +
       li('非負責人', p['非負責人'] === true, '本人確實未有依公司法或商業登記法等規定擔任他單位法定負責人之情事。',
         w['店後來'] === '還是她的名字' ? '她開的店還掛她的名字：這一格會不實，請跟她確認' : '報名前已篩過，人人都勾') +
-      li('知悉親屬條款', p['知悉親屬條款'] === true, '本人已知悉申請人不得為雇主或負責人之配偶、直系血親或三親等內之旁系血親。', '人人都勾') +
+      (tc ? '' : li('知悉親屬條款', p['知悉親屬條款'] === true, '本人已知悉申請人不得為雇主或負責人之配偶、直系血親或三親等內之旁系血親。', '人人都勾')) +
       (tn ? li('知悉投保單位', p['知悉投保單位'] !== false, '本人已知悉本要點所定雇主，為就業保險投保單位之民營事業單位、團體或私立學校。', '台南版才有這一條，人人都勾') : '') +
       '</ul>' + (tn ? '<p class="hint">下面印身分證字號、戶籍地址、手機（台南版沒有通訊地址那行）；立書人簽章、日期她手寫。</p>'
         : '<p class="hint">下面印身分證字號、戶籍地址、通訊地址、手機（就是上面那幾行）；立書人簽章、日期她手寫。</p>');
