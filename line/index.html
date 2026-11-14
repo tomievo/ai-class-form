@@ -18,7 +18,7 @@ var LIFF_ID = '2012611129-fosoTGjj';
 <!--
   台中 LINE 報名：第一階段報名資料（2026-11-14，場「台中｜LINE 進來就填表」；規格 docs/規格_現場報名雲端版.md 第 15 節）
   - 學員從 LINE 官方帳號的歡迎訊息按鈕或圖文選單打開（LIFF），全程在 LINE 裡；不在 LINE 裡（電腦瀏覽器）也能填（練習畫面）
-  - 一題一畫面、大字（DESIGN.md「學員手機表單」）；前面都用點的，姓名、手機、方便接電話的時段放最後；只有姓名、手機必填
+  - 一題一畫面、大字（DESIGN.md「學員手機表單」）；前面都用點的，姓名、手機、Email 放最後；只有姓名、手機必填
   - 中途關掉再打開接著填（存在她手機的 localStorage）；送出後替她在聊天室傳一則「我填好報名資料了」（失敗略過、不擋）
   - 外部資源只有 LINE 官方 LIFF SDK（https://static.line-scdn.net/liff/edge/2/sdk.js）：DESIGN.md「不載任何外部資源」的必要例外
     （拿 LINE 帳號、傳訊息、關視窗都要它）。本機練習（localhost）不載；載不到照樣能填、能送，只是沒有 LINE 帳號連結
@@ -73,6 +73,7 @@ textarea.field{min-height:150px;resize:vertical}
 .ok{border-color:var(--ok);background:var(--ok-bg);color:var(--ink)}
 .btn{display:block;width:100%;min-height:72px;margin:20px 0 0;padding:14px 18px;border:3px solid var(--pri);border-radius:14px;background:var(--pri);color:#fff;font-size:26px;font-weight:800;line-height:1.3;text-align:center}
 .btn:active{background:var(--pri-dk)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .btn2{background:#fff;color:var(--pri-dk)}
 .btn2:active{background:var(--pri-bg)}
 .btn[aria-disabled="true"]{background:#e6e6e6;border-color:#7a7a7a;border-style:dashed;color:#333}
@@ -134,14 +135,14 @@ textarea.field{min-height:150px;resize:vertical}
       title: '回去上班，最大的困難是？', opts: ['年齡', '太久沒工作', '手機電腦不熟', '缺乏新技能', '要照顧家人', '交通不方便', '不知道自己適合什麼工作', other()] },
     // 下面三題 11/14 Tomi 加（省打電話的時間）：照 ../index.html 原題；best 的提示把給現場人員的「請她」拿掉（這裡是她自己填）
     { id: 'best', type: 'text', lines: true, out: '最拿手的事',
-      title: '以前工作，最拿手、最常被稱讚的一件事？', hint: '選填，沒有可以跳過。用自己的話說一句，例如：記得熟客愛吃什麼' },
-    { id: 'place', type: 'text', out: '希望上班地點', title: '希望在哪裡上班？', hint: '例如：岡山區、住家附近' },
+      title: '以前工作，最拿手、最常被稱讚的一件事？', hint: '用自己的話說一句，例如：記得熟客愛吃什麼' },
+    { id: 'place', type: 'text', out: '希望上班地點', title: '希望在哪裡上班？', hint: '例如：北屯區、住家附近' },
     { id: 'note', type: 'text', lines: true, out: '其他補充', title: '還有什麼想補充的嗎？', hint: '沒有的話可以不填' },
-    { id: 'name', type: 'text', req: true, out: '姓名', title: '你的姓名', hint: '跟身分證上的名字一樣' },
+    { id: 'name', type: 'text', req: true, out: '姓名', title: '你的全名' },   // 11/14 Tomi：不寫「跟身分證上的名字一樣」（像在蒐集個資）
     { id: 'phone', type: 'text', req: true, tel: true, out: '手機', title: '你的手機號碼', hint: '10 個數字，09 開頭' },
     // Email（11/14 Tomi 加）：原題的字和提示，這裡不必填
-    { id: 'email', type: 'text', email: true, out: 'Email', title: '你的 Email 信箱', hint: '申請表必填。看手機上登入的 Email；真的沒有，填家人的。' },
-    { id: 'callTime', type: 'multi', out: '方便接電話', title: '方便接電話的時段？', hint: '可以選好幾個', opts: ['早上', '下午', '晚上'] }
+    { id: 'email', type: 'text', email: true, out: 'Email', title: '你的 Email 信箱', hint: '申請表必填。看手機上登入的 Email；真的沒有，填家人的。' }
+    // 「方便接電話的時段」11/14 Tomi 拿掉：他直接打電話確認，不看時段（雲端照收空的時段）
   ];
   QS.forEach(function (q) { if (q.opts) q.opts = q.opts.map(function (o) { return typeof o === 'string' ? { t: o } : o; }); });
   var TOTAL = QS.length;
@@ -253,7 +254,7 @@ textarea.field{min-height:150px;resize:vertical}
       '<div class="bar" aria-hidden="true"><span style="width:' + Math.round(i / TOTAL * 100) + '%"></span></div>' +
       '<h2 class="qt">' + esc(q.title) + '</h2>' + (q.hint ? '<p class="hint">' + esc(q.hint) + '</p>' : '');
     if (q.type === 'text') {
-      h += '<label class="flabel" for="txt">' + esc(q.title) + '</label>' + (q.lines
+      h += '<label class="flabel sr" for="txt">' + esc(q.title) + '</label>' + (q.lines
         ? '<textarea class="field" id="txt" rows="4" maxlength="400">' + esc(state.a[q.id] || '') + '</textarea>'
         : '<input class="field" id="txt" ' + (q.tel ? 'type="tel" inputmode="tel" autocomplete="tel" maxlength="20"'
           : q.email ? 'type="email" inputmode="email" autocomplete="email" autocapitalize="off" maxlength="100"'
@@ -271,14 +272,14 @@ textarea.field{min-height:150px;resize:vertical}
     if (err) h += '<div class="box err" role="alert"><p>' + esc(err) + '</p></div>';
     var answered = q.type === 'text' ? !!String(state.a[q.id] || '').trim() : sel(q).length > 0;
     if (last) h += '<button type="button" class="btn" data-act="send"' + (sending ? ' aria-disabled="true"' : '') + '>' + (sending ? '正在送出，請稍等…' : '送出') + '</button>';
-    else if (q.type === 'text') h += '<button type="button" class="btn" data-act="next">下一題</button>';   // 打字題：打了字不會重畫，按鈕一律寫「下一題」（空著也能過）
+    else if (q.type === 'text') h += '<button type="button" class="btn' + (q.req || answered ? '' : ' btn2') + '" data-act="next" id="nextBtn">' + (q.req || answered ? '下一題' : '跳過') + '</button>';   // 打字題：必填寫「下一題」；不必填的空著寫「跳過」，打了字由 input 事件改成「下一題」（11/14 Tomi）
     else if (q.type !== 'single' || answered) h += '<button type="button" class="btn' + (answered ? '' : ' btn2') + '" data-act="next">' + (answered ? '下一題' : '跳過這題') + '</button>';
     else h += '<button type="button" class="linkbtn" data-act="next">跳過這題</button>';
     return h;
   }
   function doneHTML() {
     return '<div class="center"><p class="big">收到了！</p>' +
-      '<p class="lead">謝謝你，' + esc(String(state.a.name || '').trim()) + '。<br>我們會在你方便的時段打電話給你，確認補助資格。</p></div>' +
+      '<p class="lead">謝謝你，' + esc(String(state.a.name || '').trim()) + '。<br>我們會打電話跟你聯繫，確認補助資格。</p></div>' +
       (inLine() ? '<button type="button" class="btn" data-act="close">回到聊天室</button>' : '<p class="hint center">可以關掉這個畫面了。</p>') +
       '<button type="button" class="linkbtn" data-act="redo">資料要改：重新填一次</button>';
   }
@@ -330,7 +331,7 @@ textarea.field{min-height:150px;resize:vertical}
       .filter(function (q) { return checkText(q); })[0];
     if (miss) { state.pos = QS.indexOf(miss); err = checkText(miss); save(); render(); focusField(); return; }
     sending = true; err = ''; render(false);
-    var body = { '姓名': String(state.a.name).trim(), '手機': phoneDigits(state.a.phone), '時段': sel(QS[TOTAL - 1]),
+    var body = { '姓名': String(state.a.name).trim(), '手機': phoneDigits(state.a.phone), '時段': [],
       '資料表': buildText(), '答案': rawAnswers() };
     liffReady.then(function (ok) {
       var token = idToken(ok);
@@ -369,12 +370,19 @@ textarea.field{min-height:150px;resize:vertical}
     else if (act === 'redo') go(0);
     else if (act === 'close') { try { window.liff.closeWindow(); } catch (e) { /* 略過 */ } }
   });
-  app.addEventListener('input', function () { keepTyping(); save(); });
+  app.addEventListener('input', function () {
+    keepTyping(); save();
+    var q = QS[state.pos], b = document.getElementById('nextBtn');   // 不必填的打字題：空著＝「跳過」、打了字＝「下一題」（不重畫，免得打字中斷）
+    if (b && q && q.type === 'text' && !q.req) { var has = !!String(state.a[q.id] || '').trim(); b.textContent = has ? '下一題' : '跳過'; b.classList.toggle('btn2', !has); }
+  });
   app.addEventListener('keydown', function (ev) {   // 打字題按 Enter＝下一題（最後一題沒有打字題）
-    if (ev.key === 'Enter' && ev.target.id === 'txt' && ev.target.tagName === 'INPUT') { ev.preventDefault(); next(); }
+    if (ev.key === 'Enter' && ev.target.id === 'txt' && ev.target.tagName === 'INPUT') { ev.preventDefault(); if (state.pos === TOTAL - 1) send(); else next(); }
   });
   if (typeof state.pos === 'number' && !(state.pos >= 0 && state.pos < TOTAL)) state.pos = 'start';
   render();
+  // 先叫醒雲端（11/14 Tomi 實測送出等了十幾秒：雲端閒置會睡著，第一個請求要等它開機約 10 秒）。打開表單就先敲一下，
+  // 她填題目的這幾分鐘雲端就醒了，送出時不用再等開機。no-cors：只要請求到得了雲端就好，不讀回應。
+  if (API && !LOCAL) { try { fetch(API + '/health', { mode: 'no-cors', cache: 'no-store' }).catch(function () {}); } catch (e) { /* 略過 */ } }
 })();
 </script>
 </body>
