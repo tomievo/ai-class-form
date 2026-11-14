@@ -242,9 +242,9 @@ textarea.field{min-height:150px;resize:vertical}
   }
   function startHTML() {
     var started = Object.keys(state.a).length > 0;
-    return '<h1>重返職場課程<br>報名資料</h1>' +
-      '<p class="lead">先回答幾個問題，我們會打電話給你，說明課程和補助怎麼申請。</p>' +
-      '<p class="hint">大部分用點的，最後留姓名和手機。姓名、手機只用來聯絡你課程的事。</p>' +
+    return '<h1>報名資料</h1>' +
+      '<p class="lead">想上課的話，請先填這份表單。<br>填完我們會跟你聯繫，確認補助資格。</p>' +
+      '<p class="hint">大約 5 分鐘，大多用點的。姓名、手機只用來聯絡你課程的事。</p>' +
       '<button type="button" class="btn" data-act="go">' + (started ? '接著填' : '開始填寫') + '</button>';
   }
   function questionHTML(q) {
@@ -279,7 +279,7 @@ textarea.field{min-height:150px;resize:vertical}
   }
   function doneHTML() {
     return '<div class="center"><p class="big">收到了！</p>' +
-      '<p class="lead">謝謝你，' + esc(String(state.a.name || '').trim()) + '。<br>我們會在你方便的時段打電話給你。</p></div>' +
+      '<p class="lead">謝謝你，' + esc(String(state.a.name || '').trim()) + '。<br>我們會在你方便的時段打電話給你，確認補助資格。</p></div>' +
       (inLine() ? '<button type="button" class="btn" data-act="close">回到聊天室</button>' : '<p class="hint center">可以關掉這個畫面了。</p>') +
       '<button type="button" class="linkbtn" data-act="redo">資料要改：重新填一次</button>';
   }
