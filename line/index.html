@@ -281,7 +281,7 @@ textarea.field{min-height:150px;resize:vertical}
     return '<div class="center"><p class="big">收到了！</p>' +
       '<p class="lead">謝謝你，' + esc(String(state.a.name || '').trim()) + '。<br>我們會打電話跟你聯繫，確認補助資格。</p></div>' +
       (inLine() ? '<button type="button" class="btn" data-act="close">回到聊天室</button>' : '<p class="hint center">可以關掉這個畫面了。</p>') +
-      '<button type="button" class="linkbtn" data-act="redo">資料要改：重新填一次</button>';
+      '<button type="button" class="linkbtn" data-act="redo">重新填一次</button>';
   }
 
   // ---------- 動作 ----------
@@ -367,7 +367,7 @@ textarea.field{min-height:150px;resize:vertical}
     else if (act === 'back') { keepTyping(); go(state.pos === 0 ? 'start' : state.pos - 1); }
     else if (act === 'next') next();
     else if (act === 'send') send();
-    else if (act === 'redo') go(0);
+    else if (act === 'redo') { state.a = {}; state.f = {}; go('start'); }   // 11/14 Tomi：重新填一次＝從頭開始、答案清空（雲端照舊更新同一筆）
     else if (act === 'close') { try { window.liff.closeWindow(); } catch (e) { /* 略過 */ } }
   });
   app.addEventListener('input', function () {
@@ -380,6 +380,8 @@ textarea.field{min-height:150px;resize:vertical}
   });
   if (typeof state.pos === 'number' && !(state.pos >= 0 && state.pos < TOTAL)) state.pos = 'start';
   render();
+  // 完成頁一打開就畫了，那時 LINE 還沒準備好（認不出在 LINE 裡）→ 準備好再畫一次，才會出現「回到聊天室」（11/14 Tomi 手機截圖）
+  liffReady.then(function (ok) { if (ok && state.pos === 'done') render(); });
   // 先叫醒雲端（11/14 Tomi 實測送出等了十幾秒：雲端閒置會睡著，第一個請求要等它開機約 10 秒）。打開表單就先敲一下，
   // 她填題目的這幾分鐘雲端就醒了，送出時不用再等開機。no-cors：只要請求到得了雲端就好，不讀回應。
   if (API && !LOCAL) { try { fetch(API + '/health', { mode: 'no-cors', cache: 'no-store' }).catch(function () {}); } catch (e) { /* 略過 */ } }
