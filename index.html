@@ -332,6 +332,11 @@ p.cn{margin:6px 0 2px}
   // 不用通關碼，送出存成草稿、拿號碼。存檔、照片跟這支手機上的一般報名分開放
   var G_TOKEN = (/(?:^#|&)g=([A-Za-z0-9_-]{20,})/.exec(location.hash) || [])[1] || '';
   if (G_TOKEN) { STORE_KEY = 'gov_subsidy.women_ai_form.group.v1'; DB_NAME = 'gov_subsidy.women_ai_form.group'; }
+  // 台中 LINE 報名第二階段（Tomi 11/14）：後台「台中 LINE 報名」明細按「開始做申請文件」→ 新分頁打開這一頁 #line=<lineLeads 的 id>
+  // → 照開場頁點她那套載入（lLoad；只有店裡電腦，沒有通關碼先請輸入）。id 是隨機的、沒有個資
+  var LINE_WANT = G_TOKEN ? '' : (/(?:^#|&)line=(lead-[A-Za-z0-9_-]{1,60})(?:&|$)/.exec(location.hash) || [])[1] || '';
+  // 梯次的報名管道（11/14）：台中 LINE 報名帶進來的那一位只看得到這一種梯次，其他人只看得到「一般」的（不能互相選到）
+  var LINE_CH = '合作單位 LINE 報名';
   var HEADER = '【自主訓練報名資料表 v3】';          // 資料表文字沿用 v3（規格第 1 節），不改
   var EMPTY = '（未填）';
   var NO_LABOR = '沒有任何勞保、農保紀錄';             // 勞保那一步的按鈕（10/12）
@@ -880,6 +885,9 @@ p.cn{margin:6px 0 2px}
       return '';
     }
     if (q.type === 'single') {
+      // 台中 LINE 報名：她在 LINE 答過的單選題（照 LINE 那一行的字，state.lineOut）算答好了。11/14 第二階段發現第一階段漏了這一行：
+      // 送出時被當成沒答、跳回那一題要她重點（Tomi：「一定要帶入她在 LINE 已經填好的答案」）
+      if (lineText(q)) return '';
       var o = optByT(q, state.a[q.id]);
       if (!o) return '請點一個答案。';
       if (fOf(o) && o.f.req && !followText(q)) return o.f.label + '。';
@@ -1137,7 +1145,7 @@ p.cn{margin:6px 0 2px}
     if (q.type === 'batch') h += '<p class="how">點一個梯次</p>';
     if (q.type === 'photo') {
       h += fileHTML(q);
-      if (q.id === 'idFront' && noIdOk() && !state.fill && working !== q.id)   // 10/28：店裡電腦才有（手機填好載進來的不給）；拍過的照片按了會刪掉
+      if (q.id === 'idFront' && noIdOk() && (!state.fill || state.lineId) && working !== q.id)   // 10/28：店裡電腦才有（手機填好載進來的不給：照片在手機上拍好了；台中 LINE 報名帶進來的給，11/14）；拍過的照片按了會刪掉
         h += '<button type="button" class="btn btn2 sm" data-act="noId">身分證欄位留空，<span class="nw">之後自己貼影本</span></button>';
     } else if (q.type === 'docs') {
       h += docsHTML(q);
@@ -1225,7 +1233,9 @@ p.cn{margin:6px 0 2px}
     var h = '';
     if (!API) h += '<p class="hint">（測試模式：下面是範例梯次）</p>';
     if (batchGone) h += '<div class="box warn"><p>原本選的 ' + esc(batchGone) + ' 不能報名了，請重選。</p></div>';
-    if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的梯次。</p></div>';
+    if (state.lineId) h += '<p class="hint">台中 LINE 報名的人，<span class="nw">只列「' + esc(LINE_CH) + '」的梯次。</span></p>';
+    if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的' + (state.lineId ? '「' + esc(LINE_CH) + '」' : '') + '梯次。' +
+      (state.lineId ? '<br>請先在後台新增梯次，報名管道選「' + esc(LINE_CH) + '」。' : '') + '</p></div>';
     h += '<div class="opts" role="radiogroup" aria-labelledby="qt">';
     var year = todayTW().slice(0, 3), month = '';
     batches.forEach(function (b, i) {
@@ -2607,6 +2617,7 @@ p.cn{margin:6px 0 2px}
   }
 
   function go(p) {
+    lineBack = -1;   // 換了畫面：#line= 打開時記的「回去繼續做」不算了
     state.pos = p;
     if (p === SUBMIT) confirmChecked = false;   // 每次到確認頁都要重新勾「本人確認」
     if (p >= 1 && p <= N && QS[p - 1].type === 'batch') loadBatches();   // 到選梯次這一題就重新讀（剩幾位、有沒有額滿）
@@ -2926,9 +2937,11 @@ p.cn{margin:6px 0 2px}
   // 她不想拍身分證（10/28）：拍過的照片刪掉（不留在這台電腦），改問字號、生日、戶籍地址；「改成拍身分證」回第 1 題，打的字清掉
   function onNoId() {
     var q = curQ();
-    if (!q || q.id !== 'idFront' || !noIdOk() || state.fill || working) return;
+    if (!q || q.id !== 'idFront' || !noIdOk() || (state.fill && !state.lineId) || working) return;
     ['idFront', 'idBack'].forEach(function (k) { dropFile(k); idbDel(k); delete state.had[k]; });
     state.noId = true;
+    // 台中 LINE 報名帶進來的（11/14）：電腦上要補的題多這三題（「上一題」、第幾題／共幾題才算得到）
+    if (state.fill) ['idNum', 'idBirth', 'idAddr'].forEach(function (k) { if (state.fillQs.indexOf(k) < 0) state.fillQs.push(k); });
     advance();
   }
   function onUseId() {
@@ -2954,7 +2967,8 @@ p.cn{margin:6px 0 2px}
     batchLoading = true;
     batchErr = null;
     if (!API) { setTimeout(function () { if (my === batchSeq) { batchLoading = false; gotBatches(sampleBatches()); } }, 200); return; }
-    api('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
+    var path = '/api/batches' + (state.lineId ? '?' + encodeURIComponent('管道') + '=' + encodeURIComponent(LINE_CH) : '');   // 雲端照管道只回那一種
+    api('GET', path, null, WAIT_MS.batches, function (r) {
       if (my !== batchSeq) return;
       batchLoading = false;
       if (r.ok) { gotBatches(arr(r.data['梯次'])); return; }
@@ -2965,12 +2979,14 @@ p.cn{margin:6px 0 2px}
       refreshBatch();
     });
   }
-  // 只列開課日 ≥ 今天（台灣時間）的；照開課日早到晚排，同一天照雲端給的順序；不能選的也照日期排在原本的位置（10/20）
+  // 只列開課日 ≥ 今天（台灣時間）的；照開課日早到晚排，同一天照雲端給的順序；不能選的也照日期排在原本的位置（10/20）。
+  // 報名管道（11/14）：雲端已經照管道分開回，這裡再擋一次——台中 LINE 報名的人只留合作單位的，其他人不留合作單位的
   function gotBatches(list) {
     var today = todayTW(), keep = [];
     list.forEach(function (b, i) {
       b = obj(b);
       var d = normDate(b['開課日']);
+      if ((b['管道'] === LINE_CH) !== !!state.lineId) return;
       if (b['梯次'] && d && d >= today) keep.push({ b: b, d: d, i: i });
     });
     keep.sort(function (x, y) { return x.d < y.d ? -1 : x.d > y.d ? 1 : x.i - y.i; });
@@ -3022,6 +3038,7 @@ p.cn{margin:6px 0 2px}
       if (!out) { fileGone(gone.k); return; }
       var data = { '送出時間': nowTW(), '姓名': nameOf(), '手機': textOf(qById('phone')), '梯次': state.batch['梯次'],
         '資料表': buildText(), '檔案': out };
+      if (state.lineId) data['LINE報名'] = state.lineId;   // 台中 LINE 報名載進來的（11/14）：雲端只讓她報合作單位的梯次
       // 上次讀取失敗、資料已經存了：這次送的跟存進去的一模一樣才帶編號（不會多存一列）。改過答案、梯次、照片、勞保檔就不帶、
       // 存成新的一列：帶編號雲端就不再存，試算表那一列會停在舊的答案（舊的那列之後她產出文件時標重複；KNOWN 135）
       if (state.pend && sigOf(data) === state.pendSig) data['編號'] = state.pend;
@@ -3515,6 +3532,11 @@ p.cn{margin:6px 0 2px}
   function gAfterRender() {
     if ((view === 'screen' && state.pos === 0 && !G_TOKEN) || (view === 'gqr' && gq.qr)) gListLoad(false);
     if (view === 'screen' && state.pos === 0 && !G_TOKEN) lListLoad(false);
+    if (lineWant && view === 'screen' && state.pos === 0 && !G_TOKEN && !codeMissing() && !lLoading) {   // #line= 打開的：載入她（一次）
+      var id = lineWant;
+      lineWant = '';
+      lLoad(id, false, true);
+    }
   }
   // 點了名單上的她：拿她手機上的答案、兩張身分證照片 → 載進這台電腦 → 從還沒答的題目接著做。
   // 這台電腦上還有人做到一半（從第 1 題按「上一題」退回開場頁也看得到名單）→ 先問，確定了（sure）才清掉
@@ -3576,12 +3598,17 @@ p.cn{margin:6px 0 2px}
   // 台中學員在 LINE 填了第一階段資料，Tomi 打完電話、她到店裡：點她 → 她在 LINE 答過的題目帶進來（點選題照 LINE 資料表的字、
   // 打字題放回答案），只問還沒答的（身分證、地址、勞保、梯次…；核對頁工作卡照舊）；產生時帶 LINE報名，雲端把那一筆標文件已產出。
   // 只認店裡的通關碼（/api/line/list、/api/line/load）；做法比照上面「今天在手機上填好的人」。
+  // 後台明細「開始做申請文件」打開的（#line=<id>，11/14 第二階段）：開場頁畫好、有通關碼就載入她（lineWant，一次）；這台電腦上有別人
+  // 做到一半照樣先問，按「回去繼續做」回到原本的畫面（lineBack）。
   var lList = null, lListKey = '', lErr = '', lListAt = 0, lListBusy = false, lListOff = false, lLoading = '';
+  var lineWant = '', lineBack = -1, lErrList = false, lAsk = '';   // lErrList：lErr 是「名單讀不到」（名單讀到了才清）；lAsk：正在問要不要換成她
   function lListHTML() {
     if (!API || TOUCH || G_TOKEN) return '';
     var all = arr(lList && lList['人們']).map(obj);
-    if (!all.length && !lErr) return '';
+    var away = lLoading && !all.some(function (p) { return str(p.id) === lLoading; });   // 後台點的、名單上還沒有她（名單還沒讀到）
+    if (!all.length && !lErr && !away && !lAsk) return '';
     var h = '<h2 class="st">台中 LINE 報名、還沒做的</h2>';
+    if (away) h += '<div class="box warn" role="status"><p>正在拿後台點的那一位的資料，請稍等…</p></div>';
     if (all.length) {
       h += '<p class="hint">點她的名字：她在 LINE 答過的題目會帶進來，<span class="nw">接著拍身分證、補地址、勞保。</span></p><ol class="glist">' +
         all.map(function (p) {
@@ -3591,7 +3618,17 @@ p.cn{margin:6px 0 2px}
             '<span class="t">' + esc(nm) + '<span class="sub2">' + esc(sub) + '</span></span></button></li>';
         }).join('') + '</ol>';
     }
-    return h + (lErr ? '<div id="llerr">' + lErr + '</div>' : '') + '<button type="button" class="alt" data-act="gLineReload">重新整理名單</button>';
+    var box = lAsk ? lAskHTML(all) : lErr;
+    return h + (box ? '<div id="llerr">' + box + '</div>' : '') + '<button type="button" class="alt" data-act="gLineReload">重新整理名單</button>';
+  }
+  // 點她（或 #line= 打開）時這台電腦上有人做到一半：先問。名字畫的時候才從名單找（#line= 打開時名單常常比詢問晚到，到了就寫得出她的名字）
+  function lAskHTML(all) {
+    var p = obj(all.filter(function (x) { return str(x.id) === lAsk; })[0]), to = str(p['姓名']) || '後台點的那一位';
+    var now = state.fill ? fillWho() : nameOf();
+    return '<div class="box warn"><p>這台電腦上有一位還沒做完' + (now ? '（' + esc(now) + '）' : '') + '。<br>換成 <b>' + esc(to) + '</b>，' +
+      (state.fill ? '電腦這邊剛補的要重填。' : '她剛填的會清掉。') + '</p>' +
+      '<button type="button" class="btn btn-danger" data-act="gLineYes" data-id="' + esc(lAsk) + '">清掉，換成 ' + esc(to) + '</button>' +
+      '<button type="button" class="btn btn2" data-act="gLineNo">回去繼續做</button></div>';
   }
   function lListLoad(force) {
     if (!API || TOUCH || G_TOKEN || lListBusy || (lListOff && !force) || codeMissing()) return;
@@ -3600,37 +3637,38 @@ p.cn{margin:6px 0 2px}
     api('GET', '/api/line/list', null, G_WAIT.list, function (r) {
       lListBusy = false;
       lListAt = Date.now();
+      // 名單讀到了只清掉「名單讀不到」的錯（lErrList）：點她之後的「確定清掉？」、載入的錯不清（11/14：第一次讀名單比 #line= 的詢問晚回來，
+      // 原本會把詢問洗掉）
       if (r.ok) {
         var key = JSON.stringify(arr(r.data['人們']));
-        if (key === lListKey && !lErr && !force) return;
-        lList = obj(r.data); lListKey = key; lErr = ''; lListOff = false;
-      } else if (r.code === 'store_code' || r.status === 404) { lErr = ''; lListOff = true; }   // 不是店裡的通關碼、雲端還是舊版：不放這一塊
-      else lErr = gErrBox(gWhy(r, '讀取台中 LINE 報名'), RETRY[r.code] ? 'gLineReload' : '');
+        if (key === lListKey && !lErrList && !force) return;
+        lList = obj(r.data); lListKey = key; lListOff = false;
+        if (lErrList) { lErr = ''; lErrList = false; }
+      } else if (r.code === 'store_code' || r.status === 404) {   // 不是店裡的通關碼、雲端還是舊版：不放這一塊
+        if (lErrList) { lErr = ''; lErrList = false; }
+        lListOff = true;
+      } else { lErr = gErrBox(gWhy(r, '讀取台中 LINE 報名'), RETRY[r.code] ? 'gLineReload' : ''); lErrList = true; }
       if (view === 'screen' && state.pos === 0) setHTML('llist', lListHTML());
     });
   }
-  function lLoad(id, sure) {
+  function lLoad(id, sure, byHash) {
     if (!/^lead-[A-Za-z0-9_-]{1,60}$/.test(str(id)) || lLoading) return;
-    if (state.fill && state.lineId === id) { lErr = ''; go(nextGap(1)); return; }   // 點的是正在幫的那一位：接著做
+    if (state.fill && state.lineId === id) { lErr = ''; lAsk = ''; lineBack = -1; go(nextGap(1)); return; }   // 點的是正在幫的那一位：接著做
     if (!sure && (Object.keys(state.a).length || Object.keys(files).length || state.docs.length || state.noLabor || state.rid)) {
-      var p = obj(arr(lList && lList['人們']).filter(function (x) { return str(obj(x).id) === id; })[0]), to = str(p['姓名']);
-      var now = state.fill ? fillWho() : nameOf();
-      lErr = '<div class="box warn"><p>這台電腦上有一位還沒做完' + (now ? '（' + esc(now) + '）' : '') + '。<br>換成 <b>' + esc(to) + '</b>，' +
-        (state.fill ? '電腦這邊剛補的要重填。' : '她剛填的會清掉。') + '</p>' +
-        '<button type="button" class="btn btn-danger" data-act="gLineYes" data-id="' + esc(id) + '">清掉，換成 ' + esc(to) + '</button>' +
-        '<button type="button" class="btn btn2" data-act="gLineNo">回去繼續做</button></div>';
+      lAsk = id; lErr = ''; lErrList = false;
       setHTML('llist', lListHTML());
       scrollToEl(document.getElementById('llerr'));
       return;
     }
-    lLoading = id; lErr = '';
+    lLoading = id; lErr = ''; lErrList = false; lAsk = '';
     setHTML('llist', lListHTML());
     api('GET', '/api/line/load?id=' + encodeURIComponent(id), null, G_WAIT.load, function (r) {
       lLoading = '';
       if (view !== 'screen' || state.pos !== 0) return;
       if (r.ok) { lTake(r.data); return; }
+      if (byHash && r.code === 'store_code') lineWant = id;   // 通關碼不對：換好了再載一次（#line= 打開的）
       if (codeRejected(r)) return;
-      lErr = gErrBox(gWhy(r, '拿她的資料'), RETRY[r.code] ? 'gLine' : '', ' data-id="' + esc(id) + '"');
+      lErr = gErrBox(gWhy(r, '拿她的資料'), RETRY[r.code] ? 'gLine' : '', ' data-id="' + esc(id) + '"'); lErrList = false;
       setHTML('llist', lListHTML());
       scrollToEl(document.getElementById('llerr'));
     });
@@ -3648,6 +3686,7 @@ p.cn{margin:6px 0 2px}
       else if (q.type === 'single' || q.type === 'multi') out[q.id] = v;
     });
     state.lineId = str(d.id); state.lineOut = out;
+    lineBack = -1;
     state.fill = true;
     state.fillQs = QS.filter(gapOf).map(function (q) { return q.id; });   // 電腦上只補這幾題
     state.fillNo = 0; state.fillName = str(d['姓名']); state.fillRid = 0;
@@ -3746,8 +3785,11 @@ p.cn{margin:6px 0 2px}
     else if (act === 'gReload') { gLoadErr = ''; gListLoad(true); }
     else if (act === 'gLine') lLoad(el.getAttribute('data-id'));
     else if (act === 'gLineYes') lLoad(el.getAttribute('data-id'), true);
-    else if (act === 'gLineNo') { lErr = ''; setHTML('llist', lListHTML()); }
-    else if (act === 'gLineReload') { lErr = ''; lListLoad(true); }
+    else if (act === 'gLineNo') {   // #line= 打開時這台電腦上有人做到一半：回到她原本的畫面（「歡迎回來」）
+      lErr = ''; lAsk = '';
+      if (lineBack > 0) { state.pos = lineBack; lineBack = -1; view = 'welcome'; render(); } else setHTML('llist', lListHTML());
+    }
+    else if (act === 'gLineReload') { lErr = ''; lErrList = false; lListLoad(true); }
     else if (act === 'gQr') gQrOpen();
     else if (act === 'gQrBatches') { gQrBatches(); render(); }
     else if (act === 'gPick') gQrMake(Number(el.getAttribute('data-i')));
@@ -3981,8 +4023,23 @@ p.cn{margin:6px 0 2px}
   var going = state.pos >= 1 && !state.g;   // 手機上已經送出（state.g）：直接是「你是第 N 號」
   function start() {
     view = going ? 'welcome' : 'screen';
+    if (LINE_WANT) lineOpen();
     if (codeMissing()) { codeWhy = 'first'; codeBack = view; view = 'code'; }
     render();
+  }
+  // 後台「開始做申請文件」打開的（#line=<id>，11/14）：網址的 #line= 拿掉（重新整理不會再載一次）；正在幫的就是她 → 照原本的接著做；
+  // 不然到開場頁載入她（gAfterRender）。手機、平板不載（台中 LINE 報名只在店裡電腦做），說一句
+  function lineOpen() {
+    var id = LINE_WANT;
+    LINE_WANT = '';
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 網址沒改也照常 */ }
+    if (!API) return;
+    if (TOUCH) { if (view === 'screen' && state.pos === 0) notice = '「開始做申請文件」要用店裡的電腦打開（手機、平板不能載入台中 LINE 報名的人）。'; return; }
+    if (state.fill && state.lineId === id) return;
+    lineWant = id;
+    if (view === 'welcome') lineBack = state.pos;
+    view = 'screen';
+    state.pos = 0;
   }
   function begin() {
     begun = true;
