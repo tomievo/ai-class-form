@@ -243,8 +243,7 @@ textarea.field{min-height:150px;resize:vertical}
   function startHTML() {
     var started = Object.keys(state.a).length > 0;
     return '<h1>報名資料</h1>' +
-      '<p class="lead">想上課的話，請先填這份表單。<br>填完我們會跟你聯繫，確認補助資格。</p>' +
-      '<p class="hint">大約 5 分鐘，大多用點的。姓名、手機只用來聯絡你課程的事。</p>' +
+      '<p class="lead">麻煩填寫這份表單，填完之後我們會跟你聯繫、確認補助資格，大約 5 分鐘。</p>' +
       '<button type="button" class="btn" data-act="go">' + (started ? '接著填' : '開始填寫') + '</button>';
   }
   function questionHTML(q) {
