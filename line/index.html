@@ -141,7 +141,7 @@ textarea.field{min-height:150px;resize:vertical}
     { id: 'name', type: 'text', req: true, out: '姓名', title: '你的全名' },   // 11/14 Tomi：不寫「跟身分證上的名字一樣」（像在蒐集個資）
     { id: 'phone', type: 'text', req: true, tel: true, out: '手機', title: '你的手機號碼', hint: '10 個數字，09 開頭' },
     // Email（11/14 Tomi 加）：原題的字和提示，這裡不必填
-    { id: 'email', type: 'text', email: true, out: 'Email', title: '你的 Email 信箱', hint: '申請表必填。看手機上登入的 Email；真的沒有，填家人的。' }
+    { id: 'email', type: 'text', req: true, email: true, out: 'Email', title: '你的 Email 信箱', hint: '申請表必填。看手機上登入的 Email；真的沒有，填家人的。' }
     // 「方便接電話的時段」11/14 Tomi 拿掉：他直接打電話確認，不看時段（雲端照收空的時段）
   ];
   QS.forEach(function (q) { if (q.opts) q.opts = q.opts.map(function (o) { return typeof o === 'string' ? { t: o } : o; }); });
@@ -295,6 +295,7 @@ textarea.field{min-height:150px;resize:vertical}
     var v = String(state.a[q.id] || '').trim();
     if (q.id === 'name') return v ? '' : '請寫你的姓名';
     if (q.id === 'phone') return /^09\d{8}$/.test(phoneDigits(v)) ? '' : '手機號碼要 09 開頭、10 個數字，請再看一下';
+    if (q.id === 'email') return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? '' : (v ? 'Email 好像少了什麼，請再看一下（要有 @）' : '請寫 Email（申請書一定要有）');   // 11/14 Tomi：Email 必填
     return '';
   }
   function next() {
@@ -327,7 +328,7 @@ textarea.field{min-height:150px;resize:vertical}
   function send() {
     if (sending) return;
     keepTyping();
-    var miss = ['name', 'phone'].map(function (id) { return QS.filter(function (q) { return q.id === id; })[0]; })
+    var miss = ['name', 'phone', 'email'].map(function (id) { return QS.filter(function (q) { return q.id === id; })[0]; })
       .filter(function (q) { return checkText(q); })[0];
     if (miss) { state.pos = QS.indexOf(miss); err = checkText(miss); save(); render(); focusField(); return; }
     sending = true; err = ''; render(false);
