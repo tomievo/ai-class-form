@@ -354,7 +354,7 @@ textarea.field{min-height:150px;resize:vertical}
   }
   function tellChat(name, phone) {   // 替她在聊天室傳一則：沒權限、不在 LINE 裡、失敗都略過
     try {
-      if (inLine()) window.liff.sendMessages([{ type: 'text', text: '我填好報名資料了\n' + name + ' ' + phone }]).catch(function () {});
+      if (inLine()) window.liff.sendMessages([{ type: 'text', text: '我填好報名資料了' }, { type: 'text', text: name + ' ' + phone }]).catch(function () {});
     } catch (e) { /* 略過 */ }
   }
 
