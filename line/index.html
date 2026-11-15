@@ -138,6 +138,8 @@ textarea.field{min-height:150px;resize:vertical}
       title: '以前工作，最拿手、最常被稱讚的一件事？', hint: '用自己的話說一句，例如：記得熟客愛吃什麼' },
     { id: 'place', type: 'text', out: '希望上班地點', title: '希望在哪裡上班？', hint: '例如：北屯區、住家附近' },
     { id: 'note', type: 'text', lines: true, out: '其他補充', title: '還有什麼想補充的嗎？', hint: '沒有的話可以不填' },
+    // 推薦人（11/15 Tomi 加，追蹤用）：直接打名字、不必填；只留在後台台中 LINE 報名的明細，不帶進申請文件、不連後台介紹人名單
+    { id: 'referrer', type: 'text', out: '推薦人', title: '是誰推薦你來的？', hint: '寫推薦你的人的名字；沒有就按「跳過」' },
     { id: 'name', type: 'text', req: true, out: '姓名', title: '你的全名' },   // 11/14 Tomi：不寫「跟身分證上的名字一樣」（像在蒐集個資）
     { id: 'phone', type: 'text', req: true, tel: true, out: '手機', title: '你的手機號碼', hint: '10 個數字，09 開頭' },
     // Email（11/14 Tomi 加）：原題的字和提示，這裡不必填
