@@ -101,8 +101,8 @@ textarea.field{min-height:150px;resize:vertical}
   // ex＝選了就清掉其他選項、f＝選了要接著寫；max＝最多選幾個；req＝必填（只有姓名、手機）
   function other() { return { t: '其他', f: true }; }
   var QS = [
-    // 上課地點（11/15 Tomi 加，第一題）：給 Tomi、台中承辦照地區分派；可跳過（只提醒不擋）；後台名單多一欄（answers.classPlace）
-    { id: 'classPlace', type: 'single', out: '上課地點',
+    // 上課地點（11/15 Tomi 加，第一題）：給 Tomi、台中承辦照地區分派；必選、沒有「跳過這題」（11/15 晚 Tomi：「應該是不能跳過才對」）；後台名單多一欄（answers.classPlace）
+    { id: 'classPlace', type: 'single', req: true, out: '上課地點',
       title: '你想在哪裡上課？', opts: ['台中', '高雄', '桃園', '台北', '花蓮'] },
     { id: 'edu', type: 'single', out: '最高學歷',
       title: '你讀到哪裡畢業？', opts: ['國小', '國中', '高中職', '專科', '大學', '碩士以上'] },
@@ -279,7 +279,7 @@ textarea.field{min-height:150px;resize:vertical}
     if (last) h += '<button type="button" class="btn" data-act="send"' + (sending ? ' aria-disabled="true"' : '') + '>' + (sending ? '正在送出，請稍等…' : '送出') + '</button>';
     else if (q.type === 'text') h += '<button type="button" class="btn' + (q.req || answered ? '' : ' btn2') + '" data-act="next" id="nextBtn">' + (q.req || answered ? '下一題' : '跳過') + '</button>';   // 打字題：必填寫「下一題」；不必填的空著寫「跳過」，打了字由 input 事件改成「下一題」（11/14 Tomi）
     else if (q.type !== 'single' || answered) h += '<button type="button" class="btn' + (answered ? '' : ' btn2') + '" data-act="next">' + (answered ? '下一題' : '跳過這題') + '</button>';
-    else h += '<button type="button" class="linkbtn" data-act="next">跳過這題</button>';
+    else if (!q.req) h += '<button type="button" class="linkbtn" data-act="next">跳過這題</button>';   // 必選的單選題（上課地點）不給跳過：點了選項自動下一題
     return h;
   }
   function doneHTML() {
@@ -307,6 +307,7 @@ textarea.field{min-height:150px;resize:vertical}
     var q = QS[state.pos];
     keepTyping();
     if (q.type === 'text' && q.req) { err = checkText(q); if (err) { render(false); focusField(); return; } }
+    if (q.type === 'single' && q.req && !sel(q)) { err = '請選一個上課地點'; render(false); return; }
     go(state.pos + 1);
   }
   function focusField() { var f = document.getElementById('txt'); if (f) f.focus(); }
@@ -336,6 +337,8 @@ textarea.field{min-height:150px;resize:vertical}
     var miss = ['name', 'phone', 'email'].map(function (id) { return QS.filter(function (q) { return q.id === id; })[0]; })
       .filter(function (q) { return checkText(q); })[0];
     if (miss) { state.pos = QS.indexOf(miss); err = checkText(miss); save(); render(); focusField(); return; }
+    var place = QS.filter(function (q) { return q.id === 'classPlace'; })[0];   // 新版上線前就開始填的人可能沒答到第一題：送出前帶她回去選
+    if (place && !sel(place)) { state.pos = QS.indexOf(place); err = '請選一個上課地點'; save(); render(); return; }
     sending = true; err = ''; render(false);
     var body = { '姓名': String(state.a.name).trim(), '手機': phoneDigits(state.a.phone), '時段': [],
       '資料表': buildText(), '答案': rawAnswers() };
