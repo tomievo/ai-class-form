@@ -101,6 +101,9 @@ textarea.field{min-height:150px;resize:vertical}
   // ex＝選了就清掉其他選項、f＝選了要接著寫；max＝最多選幾個；req＝必填（只有姓名、手機）
   function other() { return { t: '其他', f: true }; }
   var QS = [
+    // 上課地點（11/15 Tomi 加，第一題）：給 Tomi、台中承辦照地區分派；可跳過（只提醒不擋）；後台名單多一欄（answers.classPlace）
+    { id: 'classPlace', type: 'single', out: '上課地點',
+      title: '你想在哪裡上課？', opts: ['台中', '高雄', '桃園', '台北', '花蓮'] },
     { id: 'edu', type: 'single', out: '最高學歷',
       title: '你讀到哪裡畢業？', opts: ['國小', '國中', '高中職', '專科', '大學', '碩士以上'] },
     { id: 'skill', type: 'multi', out: '專長',
