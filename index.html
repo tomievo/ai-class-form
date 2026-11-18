@@ -15,6 +15,24 @@
 // 留空字串＝測試模式：不連網、資料不會送出（梯次用範例；按「送出，讀取資料」只在 console 印出要送的資料）。
 // 本機測試：開 測試資料/假雲端服務.py，複製一份這個檔到暫存區、把複本的網址改成 'http://127.0.0.1:8767'；正本一律保持下面的正式網址
 var SERVICE_URL = 'https://gov-subsidy-450277428146.asia-east1.run.app';
+// 瀏覽器儲存的名字空間：各家的報名網頁都在同一個 GitHub Pages 來源底下（只差路徑），localStorage、IndexedDB 是共用的。
+// 空字串＝不給公司發布的那一家（鍵名、資料庫名跟以前一字不差）；發布.py 發別家時把這一行換成那一家的代號，每個鍵、資料庫名後面加「.<代號>」
+var STORAGE_NS = '';
+// 介紹人那一題（KNOWN 192，主辦 11/17；公司設定 報名網頁.介紹人欄）：false＝不問，資料表沒有「介紹人：」那一行（正本、沒開的那一家）；
+// 發布.py 發給開了的那一家時把這一行換成 true
+var ASK_INTRODUCER = false;
+// 選梯次照區分開（KNOWN 199，主辦 11/17；公司設定 報名網頁.梯次分區）：false＝不分、照舊整排列出來（正本、沒開的那一家）；
+// 發布.py 發給開了的那一家時把這一行換成 true（最上面一排區按鈕，先選她通訊地址那一區）
+var BATCH_REGIONS = false;
+// 通訊地址不在上課地點那個分署的轄區（KNOWN 199，主辦 11/17；公司設定 報名網頁.地址不在轄區只提醒）：false＝紅字擋到改好才能產生
+// （KNOWN 167；正本、沒開的那一家）；true＝只黃字提醒、照樣能產生（寫手決定要不要繼續）。發布.py 發給開了的那一家時換成 true
+var AREA_WARN_ONLY = false;
+// 申請文件、信封的下載按鈕（亞拿 11/17；公司設定 報名網頁.文件下載）：false＝做好頁照舊、列印站和我協助的學員沒有下載（正本、沒開的那一家）；
+// 發布.py 發給開了的那一家時把這一行換成 true（做好頁、列印站、我協助的學員每份文件的列印按鈕下面多一排「下載 PDF」）
+var DOC_DOWNLOAD = false;
+// 下載 Word（公司設定 報名網頁.下載Word）：false＝沒有（正本、沒開的那一家）；true＝那一排多「下載 Word」（網頁把手上的 PDF 傳給雲端 /api/word 轉）。
+// DOC_DOWNLOAD 是 false 時這一行是 true 也當作關。發布.py 發給開了的那一家時把這一行換成 true
+var WORD_DOWNLOAD = false;
 // 現場通關碼：true＝第一次在這台電腦打開要輸入一次（記在這台電腦），每個請求帶 X-Store-Code 標頭；
 // false＝不問、不帶（雲端服務那邊的檢查也要一起拿掉）
 var 需要通關碼 = true;
@@ -28,6 +46,8 @@ var 需要通關碼 = true;
     重新整理可以接著做；按「下一位學員」「今天印不了，先換下一位」或「重新填寫」才清掉（現場通關碼留著）
   - 列印站（網址加 #列印站，店裡接印表機的電腦設成書籤）：學員在自己手機上產好文件，現場人員在這裡點她的名字列印。
     手機、平板的列印頁會叫她去列印站；列印站拿到的 PDF 只放在記憶體，不存進這台電腦
+  - 我協助的學員（只有開了寫手代碼的那一家，KNOWN 202）：開始畫面多一顆，寫手代碼看自己協助報名、那一梯還沒開課的學員，
+    每位「列印申請文件」「印信封」（手機、電腦都可以）；共用的店裡碼看全部。PDF 一樣只放在記憶體
 -->
 <style>
 :root{
@@ -88,6 +108,11 @@ h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
 /* 梯次名稱、上課時間各自一塊：放不下就整塊換到下一行，不在「115/11/24」「（二）」或「09:00–」後面拆開（一塊比一行還長才在塊裡面換行，不會超出按鈕） */
 .b1>span{display:inline-block}
 @media (max-width:340px){.b1{font-size:24px}}   /* 320 寬：26px 的「115/11/24（二）」差 1px 放不下一行 */
+/* 選梯次照區分開（KNOWN 199）：梯次上面一排區按鈕（樣子同核對頁點選的 .pk：按下去藍底白字＋✓），手機兩個一列、電腦一排；縣市之間才換行 */
+.rgs{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0 0}
+.rgs .pk{flex:1 1 calc(50% - 5px);min-height:60px;padding:6px 8px;font-size:20px;text-align:center}
+@media (min-width:600px){.rgs .pk{flex:1 1 0}}
+.rgh{margin:10px 0 0}
 
 /* 輸入框 */
 .flabel{display:block;font-size:22px;font-weight:800;margin:8px 0}
@@ -183,6 +208,7 @@ textarea.inp{resize:vertical}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
 .ftxt{margin:0;font-size:20px;font-weight:800;color:var(--err)}
 .areat{margin:-4px 0 10px calc(4.6em + 10px);font-size:20px;font-weight:800;color:var(--err)}   /* 通訊地址不在上課地點那個分署的轄區（KNOWN 167） */
+.areaw{margin:-4px 0 10px;padding:6px 10px;border:3px solid var(--warn);border-radius:10px;background:var(--warn-bg);color:var(--ink);font-size:20px;font-weight:800}   /* 同上，只提醒、不擋的那一家（KNOWN 199）：黃框整列寬 */
 .two{display:grid;grid-template-columns:minmax(0,1fr);gap:0 18px}
 @media (min-width:600px){.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .idth{display:flex;gap:12px;margin:8px 0}
@@ -298,12 +324,20 @@ p.cn{margin:6px 0 2px}
 .snote{margin:16px 0 0;font-size:20px;font-weight:800}
 .sfall{margin:14px 0 0;font-size:22px;font-weight:700}
 .sfall a{display:inline-block;min-height:44px;padding:6px 10px;color:var(--pri-dk)}
+/* 下載申請文件、信封（DOC_DOWNLOAD，亞拿 11/17）：列印按鈕下面一排「下載 PDF」「下載 Word」並排；手機 375 也並排得下 */
+.dlrow{display:flex;gap:12px}
+.dlrow .btn{flex:1 1 0;width:auto;min-width:0;margin:12px 0 0;padding:10px 8px;display:flex;align-items:center;justify-content:center}
+.dlnote{margin:14px 0 0}
 
 /* 多人一起報名（10/22）：手機送出後的大號碼；店裡電腦開場頁的名單（一位一顆大按鈕，號碼在左邊）、QR 畫面 */
 .gdone{min-height:calc(100vh - 80px);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
 .gname{margin:0 0 6px;font-size:34px;font-weight:800;line-height:1.3}
 .fillbar{margin:10px 0 0;font-size:18px}
 .fillbar .linkbtn{margin-left:14px}
+/* 寫手（KNOWN 182，只有開了寫手代碼的那一家）：畫面最上面一行「寫手：○○」＋「換寫手」 */
+.writerbar{margin:10px 0 0;font-size:20px;color:var(--ink2)}
+.writerbar b{color:var(--ink)}
+.writerbar .linkbtn{margin-left:14px}
 .gno{margin:0 0 18px;font-size:28px;font-weight:800;line-height:1.3;text-align:center}
 .gno b{display:block;font-size:120px;line-height:1.1;letter-spacing:4px}
 .glist{list-style:none;margin:8px 0 0;padding:0}
@@ -321,18 +355,19 @@ p.cn{margin:6px 0 2px}
 (function () {
   'use strict';
 
-  var STORE_KEY = 'gov_subsidy.women_ai_form.v8';   // v8（10/22）：工作那 6 題拿掉（改在核對頁卡片上問）、核對頁卡片多職稱／做什麼／公保軍保，題目位置變了；
+  // 所有 localStorage 鍵、IndexedDB 名字都要經過 nsKey（STORAGE_NS 空的＝原樣；別家＝後面加 .<代號>，不碰沒後綴的鍵）
+  var NS = typeof STORAGE_NS === 'string' && STORAGE_NS ? '.' + STORAGE_NS : '';
+  function nsKey(k) { return k + NS; }
+  var STORE_KEY = nsKey('gov_subsidy.women_ai_form.v8');   // v8（10/22）：工作那 6 題拿掉（改在核對頁卡片上問）、核對頁卡片多職稱／做什麼／公保軍保，題目位置變了；
   // v7（10/12）：職稱選「沒在公司上過班」多問三題、勞保那一步多一顆按鈕；v6（10/9）：加一題「最拿手的事」；v5（10/7）：拿掉 6 題資格題；
   // v4＝現場版（勞保多檔、梯次、核對、列印）。舊版存的答案不接著用（不會帶上一位學員的答案）
-  var OLD_KEYS = ['gov_subsidy.women_ai_form.v1', 'gov_subsidy.women_ai_form.v2', 'gov_subsidy.women_ai_form.v3',
-    'gov_subsidy.women_ai_form.v4', 'gov_subsidy.women_ai_form.v5', 'gov_subsidy.women_ai_form.v6',
-    'gov_subsidy.women_ai_form.v7'];   // 打開就清掉
-  var DB_NAME = 'gov_subsidy.women_ai_form', DB_STORE = 'files';   // IndexedDB：照片、勞保檔、申請文件
+  var OLD_KEYS = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7'].map(function (v) { return nsKey('gov_subsidy.women_ai_form.' + v); });   // 打開就清掉
+  var DB_NAME = nsKey('gov_subsidy.women_ai_form'), DB_STORE = 'files';   // IndexedDB：照片、勞保檔、申請文件
   // 多人一起報名（10/22）：學員掃店裡電腦上的 QR → 網址 #g=<代碼>（這一梯、今天有效，雲端簽的）＝手機模式：只問 G_QS 那幾題、
   // 不用通關碼，送出存成草稿、拿號碼。存檔、照片跟這支手機上的一般報名分開放
   var G_TOKEN = (/(?:^#|&)g=([A-Za-z0-9_-]{20,})/.exec(location.hash) || [])[1] || '';
-  if (G_TOKEN) { STORE_KEY = 'gov_subsidy.women_ai_form.group.v1'; DB_NAME = 'gov_subsidy.women_ai_form.group'; }
-  // 台中 LINE 報名第二階段（Tomi 11/14）：後台「台中 LINE 報名」明細按「開始做申請文件」→ 新分頁打開這一頁 #line=<lineLeads 的 id>
+  if (G_TOKEN) { STORE_KEY = nsKey('gov_subsidy.women_ai_form.group.v1'); DB_NAME = nsKey('gov_subsidy.women_ai_form.group'); }
+  // 台中 LINE 報名第二階段（主辦 11/14）：後台「台中 LINE 報名」明細按「開始做申請文件」→ 新分頁打開這一頁 #line=<lineLeads 的 id>
   // → 照開場頁點她那套載入（lLoad；只有店裡電腦，沒有通關碼先請輸入）。id 是隨機的、沒有個資
   var LINE_WANT = G_TOKEN ? '' : (/(?:^#|&)line=(lead-[A-Za-z0-9_-]{1,60})(?:&|$)/.exec(location.hash) || [])[1] || '';
   // 梯次的報名管道（11/14）：台中 LINE 報名帶進來的那一位只看得到這一種梯次，其他人只看得到「一般」的（不能互相選到）
@@ -347,7 +382,7 @@ p.cn{margin:6px 0 2px}
   var NO_ID_LINE = '身分證影本：' + NO_ID;
   var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
   var GUARD_MS = 400;    // 換畫面後這段時間內的點擊不算（防連點點到下一題）
-  var WAIT_MS = { batches: 45000, read: 120000, gen: 240000, recent: 45000, packet: 90000, judge: 20000 };   // 讀梯次、讀取資料、產生申請文件、列印站的名單和文件、核對頁的預覽最多等多久，超過當沒成功
+  var WAIT_MS = { batches: 45000, read: 120000, gen: 240000, recent: 45000, packet: 90000, judge: 20000, mine: 45000, word: 90000 };   // 讀梯次、讀取資料、產生申請文件、列印站的名單和文件、核對頁的預覽、我協助的學員名單、轉 Word 最多等多久，超過當沒成功
   var MAX_EDGE = 1600, JPEG_Q = 0.8;    // 身分證照片：長邊 1600px、JPEG 0.8（v3 原樣）
   var DOC_EDGE = 2400, DOC_Q = 0.85;    // 勞保照片、截圖：長邊 2400px、JPEG 0.85（小字要看得清楚）
   var MAX_BYTES = 10 * 1024 * 1024;     // 每個檔最大 10MB
@@ -485,8 +520,15 @@ p.cn{margin:6px 0 2px}
     // 選梯次（v4）：到這一題才問雲端服務哪幾梯還能報
     { id: 'batch', type: 'batch', short: '上課梯次', title: '選上課梯次', hint: '只能選「開放報名」的梯次' }
   ];
+  // 介紹人（KNOWN 192，主辦 11/17）：ASK_INTRODUCER 是 true 的那一家（發布時換的那一行）才多這一題，放在選梯次前面。打字、可以跳過
+  // （不用選的、沒有「沒有介紹人」）；有打才在資料表多一行「介紹人：<全名>」（buildText）。現場人員問：不在 G_QS，手機一起報名到電腦前才問。
+  // how＝標題下面那行藍字；keepNext＝沒打字按鈕照樣寫「下一題」（提示就是叫她直接按下一題）。
+  // 沒開的那一家題目、題號、每個畫面的位置跟以前一模一樣；開了的那一家打開舊存檔時，畫面位置照 iq 挪（sanitize）
+  var IQ_AT = QS.length;   // 這一題在第幾個畫面（＝沒有它的時候選梯次那一題的位置）
+  if (ASK_INTRODUCER === true) QS.splice(IQ_AT - 1, 0, { id: 'introducer', type: 'text', short: '介紹人', title: '介紹人姓名',
+    how: '請打正確的全名（例如：王小明）', hint: '不知道或沒有，就直接按下一題。', ph: '介紹人全名', maxlen: 50, keepNext: true });
 
-  var N = QS.length;      // 32 題（身分證正面、反面＋她不拍時打的 3 題＋25 題＋勞保資料＋梯次；10/22 起工作那 6 題改在核對頁卡片上問）
+  var N = QS.length;      // 32 題（身分證正面、反面＋她不拍時打的 3 題＋25 題＋勞保資料＋梯次；10/22 起工作那 6 題改在核對頁卡片上問）；開了介紹人的 33 題
   var SUBMIT = N + 1;     // 確認頁
   var REVIEW = N + 2;     // 核對頁（現場人員）
   var PRINT = N + 3;      // 列印頁
@@ -499,7 +541,7 @@ p.cn{margin:6px 0 2px}
   var NG_TITLE_OPTS = NG_TITLES.concat([{ t: '其他', f: { label: '照她說的寫，做什麼工作' } }]).map(function (o) { return typeof o === 'string' ? { t: o } : o; });
 
   // 測試模式（SERVICE_URL 空的）用的範例梯次：下個月 18 日、下下個月 16 日各一梯（跟著今天算：已經開課的不列，寫死日期過了就選不到）；
-  // 第二梯報超過名額 10 位，照樣能選（名額只當參考，Tomi 10/20）
+  // 第二梯報超過名額 10 位，照樣能選（名額只當參考，主辦 10/20）
   function sampleBatches() {
     var t = nowTW(), y = +t.slice(0, 4), m = t.slice(5, 7) - 1;   // 今天（台灣時間）的西元年、月（0 起算）
     return [[1, 18, 3, '開放報名'], [2, 16, 12, '開放報名']].map(function (x) {
@@ -621,9 +663,11 @@ p.cn{margin:6px 0 2px}
   // need＝產生時被 409「要確認」退回過（雲端那時把試算表狀態改成「要確認」）；
   // 多人一起報名（10/22，都是選填）：fill＝這位是從手機填好的載進這台電腦的（只問還沒答的題）；
   // 手機上：g＝送出成功拿到的 {no, rid, batch, name}（打開就是「你是第 N 號」）、tok＝那時掃的 QR 代碼；
-  // made＝這個編號產生過申請文件（11/08，KNOWN 169）：再產生一次時帶 沿用計畫書，雲端用第一次寫的計畫書、不重寫
+  // made＝這個編號產生過申請文件（11/08，KNOWN 169）：再產生一次時帶 沿用計畫書，雲端用第一次寫的計畫書、不重寫；
+  // iq＝存的時候有沒有介紹人那一題（KNOWN 192；沒有這一鍵＝沒有：舊存檔、沒開的那一家——undefined 存的時候不寫進去，沒開的那一家存的跟以前一樣）；
+  // rg＝選梯次那一步寫手按的區（KNOWN 199：'all' 或分署；按了才有這一鍵，沒開分區的那一家存的跟以前一樣）
   function fresh() {
-    return { v: 8, pos: 0, back: 0, had: {}, a: {}, docs: [], noLabor: false, noId: false, batch: null, rid: 0, sheet: '', read: null, jd: null, fix: null, out: null, wait: '', pend: 0, pendSig: '', need: false,
+    return { v: 8, iq: ASK_INTRODUCER === true || undefined, pos: 0, back: 0, had: {}, a: {}, docs: [], noLabor: false, noId: false, batch: null, rid: 0, sheet: '', read: null, jd: null, fix: null, out: null, wait: '', pend: 0, pendSig: '', need: false,
       fill: false, fillQs: [], fillNo: 0, fillName: '', fillRid: 0, g: null, tok: '', made: false, lineId: '', lineOut: {} };
   }
   function sanitize(d) {
@@ -649,7 +693,9 @@ p.cn{margin:6px 0 2px}
     s.noLabor = d.noLabor === true && !s.docs.length;
     s.noId = d.noId === true && noIdOk();   // 她不想拍身分證（10/28）：只有店裡電腦
     if (d.batch && typeof d.batch === 'object' && typeof d.batch['梯次'] === 'string') s.batch = d.batch;
+    if (BATCH_REGIONS === true && (d.rg === 'all' || REGION_ORDER.indexOf(d.rg) >= 0)) s.rg = d.rg;   // 選梯次寫手按的區（KNOWN 199；沒按＝沒有這一鍵）
     var p = Number(d.pos), b = Number(d.back);
+    if ((d.iq === true) !== (ASK_INTRODUCER === true)) { p = iqMove(p); b = iqMove(b); }   // 介紹人那一題這次有、存的時候沒有（或反過來）
     if (p >= 0 && p <= PRINT && Math.floor(p) === p) s.pos = p;
     if (b >= 1 && b <= REVIEW && Math.floor(b) === b) s.back = b;
     if (s.pos >= REVIEW) {   // 核對頁、列印頁要有讀取結果，沒有就回確認頁
@@ -675,6 +721,8 @@ p.cn{margin:6px 0 2px}
     s.tok = str(d.tok);
     return s;
   }
+  // 介紹人那一題（KNOWN 192）存的時候沒有、現在有：選梯次之後的畫面（梯次、確認頁、核對頁、列印頁）往後挪一個；反過來往前挪。回到同一個畫面
+  function iqMove(x) { return ASK_INTRODUCER === true ? (x >= IQ_AT ? x + 1 : x) : (x > IQ_AT ? x - 1 : x); }
   function load() {
     try {
       var raw = window.localStorage.getItem(STORE_KEY);
@@ -811,6 +859,8 @@ p.cn{margin:6px 0 2px}
       [['身分證字號', 'idNum'], ['出生日期', 'idBirth'], ['戶籍地址', 'idAddr']].forEach(function (x) { lines.push(x[0] + '：' + (textOf(qById(x[1])) || EMPTY)); });
     }
     if (state.noLabor) lines.push(NO_LABOR_LINE);   // 最後一題之後、本人確認之前（雲端看到這行就不要勞保檔）
+    var iq = qById('introducer');   // 介紹人（KNOWN 192，只有開了的那一家有這一題）：有打才多這一行，跳過就沒有
+    if (iq && shown(iq) && textOf(iq)) lines.push('介紹人：' + textOf(iq));
     lines.push('本人確認：以上都是真實狀況');
     return lines.join('\n');
   }
@@ -886,7 +936,7 @@ p.cn{margin:6px 0 2px}
     }
     if (q.type === 'single') {
       // 台中 LINE 報名：她在 LINE 答過的單選題（照 LINE 那一行的字，state.lineOut）算答好了。11/14 第二階段發現第一階段漏了這一行：
-      // 送出時被當成沒答、跳回那一題要她重點（Tomi：「一定要帶入她在 LINE 已經填好的答案」）
+      // 送出時被當成沒答、跳回那一題要她重點（主辦：「一定要帶入她在 LINE 已經填好的答案」）
       if (lineText(q)) return '';
       var o = optByT(q, state.a[q.id]);
       if (!o) return '請點一個答案。';
@@ -914,7 +964,7 @@ p.cn{margin:6px 0 2px}
 
   // ---------- 現場通關碼（全部集中在這一段；最上面 需要通關碼 = false 就整個不用） ----------
   var CODE_ON = typeof 需要通關碼 === 'undefined' ? true : 需要通關碼 !== false;
-  var CODE_KEY = 'gov_subsidy.store_code';   // 記在這台電腦；換學員不清
+  var CODE_KEY = nsKey('gov_subsidy.store_code');   // 記在這台電腦；換學員不清
   var storeCode = '', codeWhy = 'first', codeBack = 'screen';   // codeWhy：first 第一次／bad 雲端服務說不對／change 自己要換
 
   function loadCode() { try { storeCode = str(window.localStorage.getItem(CODE_KEY)); } catch (e) { storeCode = ''; } }
@@ -931,8 +981,58 @@ p.cn{margin:6px 0 2px}
     askCode('bad');
     return true;
   }
+  // ---------- 寫手（KNOWN 182，主辦 11/16）：開了寫手代碼的那一家，雲端讀梯次時多回「寫手」（這台電腦打的代碼是哪位寫手；共用的
+  // 現場通關碼是「主辦」）。記在這台電腦（換寫手、通關碼不對就清），畫面最上面一行「寫手：○○」＋「換寫手」。名字只從雲端來，網頁不判斷誰是寫手。
+  // 雲端沒回（沒開寫手代碼的那一家）：什麼都不顯示，畫面跟以前一樣。不給公司發布的那一份（STORAGE_NS 空的）不存寫手的名字、打開時
+  // 也不背景問：這台電腦的儲存、送出的請求跟以前一模一樣（KNOWN 183 的儲存鍵檢查照舊只看到舊鍵名）
+  var WRITER_KEY = nsKey('gov_subsidy.writer_name');
+  var WRITER_KEEP = typeof STORAGE_NS === 'string' && STORAGE_NS !== '';
+  var writerName = '';
+  function loadWriter() {
+    if (!WRITER_KEEP) return;
+    try { writerName = str(window.localStorage.getItem(WRITER_KEY)).slice(0, 50); } catch (e) { writerName = ''; }
+  }
+  function saveWriter(name) {
+    if (name === writerName) return;   // 沒變（沒開寫手代碼的一直是空的）：什麼都不做
+    writerName = name;
+    if (!WRITER_KEEP) return;
+    try { if (name) window.localStorage.setItem(WRITER_KEY, name); else window.localStorage.removeItem(WRITER_KEY); } catch (e) { /* 存不了：這次開著照樣顯示 */ }
+  }
+  // 讀梯次成功的回應 → 有「寫手」就記下來、沒有就清掉（之後那一家關了寫手代碼）；回 true＝名字變了
+  function noteWriter(r) {
+    var before = writerName;
+    saveWriter(str(obj(r.data && r.data['寫手'])['名字']).slice(0, 50));
+    return before !== writerName;
+  }
+  function writerBarHTML() {
+    if (!CODE_ON || G_TOKEN || !writerName || view === 'code' || view === 'wait' || view === 'gsend') return '';
+    return '<p class="writerbar">寫手：<b>' + esc(writerName) + '</b><button type="button" class="linkbtn" data-act="writerSwitch">換寫手</button></p>';
+  }
+  // 背景讀到的名字變了：只換最上面那一行（不整頁重畫：正在打字、等雲端的畫面都不受影響）
+  function paintWriterBar() {
+    var old = app.querySelector('.writerbar'), html = writerBarHTML();
+    if (old) { if (html) old.outerHTML = html; else old.parentNode.removeChild(old); }
+    else if (html && shownAt) { var tm = app.querySelector('.tm'); if (tm) tm.insertAdjacentHTML('afterend', html); else app.insertAdjacentHTML('afterbegin', html); }
+  }
+  // 「換寫手」：清掉這台電腦記住的代碼和寫手、回代碼畫面；填到一半的學員資料照留（打好新的代碼回到原本那一頁）
+  function switchWriter() {
+    saveWriter('');
+    saveCode('');
+    askCode('writer');
+  }
+  // 別家的網頁（STORAGE_NS 不是空的）打開時，記著代碼就背景問一次雲端是哪位寫手（名字可能改了、代碼可能被停用；沒開寫手代碼的那一家
+  // 回的沒有寫手，什麼都不顯示）；不給公司發布的那一份（STORAGE_NS 空的）不問，跟以前一樣
+  function refreshWriter() {
+    if (!WRITER_KEEP || !CODE_ON || G_TOKEN || !storeCode || !API) return;
+    api('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
+      // 名字變了：開始畫面整頁重畫（「我協助的學員」那顆跟著寫手有沒有，KNOWN 202；開始畫面沒有輸入框），其他畫面只換最上面那一行
+      if (r.ok) { if (noteWriter(r)) { if (view === 'screen' && state.pos === 0) render(); else if (view === 'station' && stWriter()) openStation(); else paintWriterBar(); } return; }
+      codeRejected(r);   // 代碼停用了、換了：到代碼畫面（填到一半的資料照留）
+    });
+  }
   function askCode(why) {
-    if (why === 'bad') saveCode('');
+    if (view === 'mine') myDrop();   // 從「我協助的學員」換寫手、代碼被停用（KNOWN 202）：拿到的 PDF 先丟掉
+    if (why === 'bad') { saveCode(''); saveWriter(''); }
     codeWhy = why;
     if (view !== 'code') codeBack = view === 'welcome' || view === 'station' ? view : 'screen';
     view = 'code';
@@ -946,6 +1046,7 @@ p.cn{margin:6px 0 2px}
     var h = '<h1>現場通關碼</h1>';
     if (codeWhy === 'bad') h += '<div class="box err"><p>現場通關碼不對（可能換了），請重新輸入。' + (codeBack === 'station' ? '' : '<br>剛剛填的資料都還在。') + '</p></div>';
     else if (codeWhy === 'change') h += '<p class="lead">請輸入新的現場通關碼。</p>';
+    else if (codeWhy === 'writer') h += '<p class="lead">換寫手：<span class="nw">請輸入自己的代碼。</span></p>' + (codeBack === 'station' ? '' : '<p class="hint">剛剛填的資料都還在。</p>');
     else h += '<p class="lead">第一次在這台電腦使用，<span class="nw">請輸入現場通關碼。</span></p>' +
       '<p class="hint">輸入一次就會記在這台電腦，<span class="nw">之後不用再輸入。</span></p>';
     h += '<label class="flabel" for="f_code">現場通關碼（6 位數字）</label>' +
@@ -973,11 +1074,12 @@ p.cn{margin:6px 0 2px}
         showMsg('通關碼不對，請再看一下。');
         return;
       }
+      if (r.ok) noteWriter(r);   // 開了寫手代碼的那一家：這個代碼是哪位寫手（KNOWN 182）
       codeDone(v, r.ok ? '' : '還沒辦法確認通關碼對不對（連不上雲端服務），先記下來了。');
     });
   }
   function codeDone(v, warn) {
-    var why = codeWhy, m = why === 'change' ? '通關碼換好了。' : why === 'bad' ? '通關碼更新好了。' : '';
+    var why = codeWhy, m = why === 'change' ? '通關碼換好了。' : why === 'bad' ? '通關碼更新好了。' : why === 'writer' ? '寫手換好了。' : '';
     var byJudge = jdOff;   // 是核對頁的預覽（/api/judge）被擋下來的：現場沒按按鈕，不叫她「再按一次」；換好了預覽再打
     saveCode(v);
     jdOff = false;
@@ -1018,7 +1120,7 @@ p.cn{margin:6px 0 2px}
   // 錯誤 → 紅框：一句白話原因。斷線、逾時、雲端暫時出錯 → 加「再試一次」（重跑同一個呼叫，資料都還在）；
   // 重試也沒用的（資料不對、額滿、梯次設定不完整…）只寫雲端回的原因
   var RETRY = { net: 1, timeout: 1, bad_json: 1, ai_failed: 1, sheet_failed: 1, internal: 1 };
-  var STEPS = { batches: '讀取梯次', read: '讀取資料', gen: '產生申請文件', recent: '更新名單', packet: '拿文件' };
+  var STEPS = { batches: '讀取梯次', read: '讀取資料', gen: '產生申請文件', recent: '更新名單', packet: '拿文件', mine: '讀取學員名單', myPacket: '拿文件', dl: '拿文件', word: '轉成 Word ' };
   // step＝哪一步（也是「再試一次」要重跑的）；attrs＝按鈕多帶的屬性（列印站拿文件：編號、種類）
   function errHTML(step, r, attrs) {
     var again = !!RETRY[r.code], t;
@@ -1039,6 +1141,9 @@ p.cn{margin:6px 0 2px}
     else if (k === 'batches') { loadBatches(); render(); }
     else if (k === 'recent') stWake(true);
     else if (k === 'packet') stPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind'));
+    else if (k === 'mine') myLoad();
+    else if (k === 'myPacket') myPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind'));
+    else if (k === 'dl' || k === 'word') dlGo(el.getAttribute('data-s'), Number(el.getAttribute('data-no')), el.getAttribute('data-kind'), el.getAttribute('data-f'));
   }
 
   // ---------- 畫面 ----------
@@ -1071,6 +1176,7 @@ p.cn{margin:6px 0 2px}
     if (cfg.kind === 'tel') { type = 'tel'; extra = ' inputmode="tel" autocomplete="tel"'; }
     if (cfg.kind === 'email') { type = 'email'; extra = ' inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false"'; }
     if (cfg.ph) extra += ' placeholder="' + esc(cfg.ph) + '"';
+    if (cfg.maxlen) extra += ' maxlength="' + cfg.maxlen + '"';   // 介紹人（KNOWN 192）：雲端最多記 50 字
     return '<input type="' + type + '"' + attrs + extra + ' enterkeyhint="next" value="' + esc(val) + '">';
   }
 
@@ -1087,7 +1193,9 @@ p.cn{margin:6px 0 2px}
       '<button type="button" class="btn" data-act="start">我同意，開始填寫</button>' +
       (TOUCH ? '' : gHomeHTML()) +   // 多人一起報名（10/22）：今天在手機上填好的人、產生 QR（店裡電腦才有）
       // 列印站只給店裡的電腦：學員自己的手機上不放這顆（點進去會看到別人的名字）；手機、平板要用就開 #列印站 網址
-      (TOUCH ? '' : '<div class="foot"><button type="button" class="btn btn2" data-act="station">列印站（店裡電腦用）</button></div>') +
+      // 寫手（開了寫手代碼的那一家，名字不是「主辦」）也不放：列印站只認店裡的碼（KNOWN 204）
+      (TOUCH || stWriter() ? '' : '<div class="foot"><button type="button" class="btn btn2" data-act="station">列印站（店裡電腦用）</button></div>') +
+      mineHomeHTML() +
       (CODE_ON ? '<div class="foot"><button type="button" class="linkbtn" data-act="code">更換通關碼</button></div>' : '');
   }
 
@@ -1135,6 +1243,7 @@ p.cn{margin:6px 0 2px}
   function questionHTML(q) {
     var h = topHTML(state.pos), tt = titleOf(q);
     h += '<h2 class="qt" id="qt" tabindex="-1">' + (isArr(tt) ? tt.map(function (s) { return '<span class="nw">' + esc(s) + '</span>'; }).join('') : esc(tt)) + '</h2>';
+    if (q.how) h += '<p class="how">' + esc(q.how) + '</p>';   // 標題下面的藍字（介紹人那一題，KNOWN 192）
     if (q.hint) h += '<p class="hint">' + escBr(q.hint) + '</p>';
     if (G_TOKEN && q.id === 'live') h += '<p class="hint">不一樣的話，地址等一下到電腦前再寫</p>';   // 手機一起報名：地址不在手機上打（10/22 驗收）
     if (q.plan && !G_TOKEN) h += '<p class="hint">這題會寫進計畫書，請帶她想清楚</p>';   // 給現場人員看，不輸出（學員自己的手機上不放）
@@ -1226,6 +1335,90 @@ p.cn{margin:6px 0 2px}
     arr(batches).forEach(function (b) { if (b['狀態'] === '開放報名') n++; });
     return n;
   }
+  // 梯次名稱一塊：同一天另開的梯次名稱接地點（KNOWN 200，例 116/01/16（六）屏東長治）→ 日期、地點各一塊（放不下時地點整塊換到下一行，
+  // 不在地點中間拆開）；只有日期的照舊一塊
+  function titleSpans(t) {
+    var m = /^(\d{2,3}\/\d{2}\/\d{2}（[日一二三四五六]）)(.+)$/.exec(t);
+    return m ? '<span>' + esc(m[1]) + '</span><span>' + esc(m[2]) + '</span>' : '<span>' + esc(t) + '</span>';
+  }
+  // 梯次是誰開的（KNOWN 198，只有亞拿：雲端開了召集人追蹤才回「開班」）：按鈕裡多一行「開班：○○」；沒有就什麼都不多（沒開的那一家照舊）
+  function ownerLine(b) {
+    return str(b['開班']) ? '<span class="b2">開班：' + esc(str(b['開班'])) + '</span>' : '';
+  }
+  // 選梯次照區分開（KNOWN 199，主辦 11/17；只有 BATCH_REGIONS 是 true 的那一家）：梯次上面一排區按鈕，下面只列那一區的梯次。
+  // 區＝分署（OFFICE_COUNTIES，跟轄區檢查、切結書預覽同一條 officeOf）：照上課地點的縣市分，認不出縣市的梯次只在「全部」。
+  // 按鈕：有梯次的區才有（北到南），字寫那一區有梯次的縣市（例「高雄・屏東」），最後「全部」；梯次都在同一組（每個按鈕列的都一樣）就不畫。
+  // 先選哪一個（regionAt）：這位學員寫手按過的（state.rg）→ 選好的梯次那一區（回來改時看得到選的那一梯）→ 她通訊地址那一區
+  // （那一區有開放報名的梯次才算）→ 全部。多人一起報名產 QR 那時還沒有學員、沒有地址：先選全部（gq.rg 記寫手按的）
+  var REGION_ORDER = ['北基宜花金馬', '桃竹苗', '中彰投', '雲嘉南', '高屏澎東'];   // 北到南；北基宜花金馬 11/17 加（KNOWN 201）、桃竹苗同一天加（KNOWN 203）
+  // 這台電腦上次按的區（Tomi 11/17「照你建議的，記住上次按的區」）：她的地址選梯次時還不知道（認不出區）才拿來先選；
+  // 只有 BATCH_REGIONS 的那一家讀、存（沒開的那一家這台電腦的儲存跟以前一模一樣）
+  var REGION_KEY = nsKey('gov_subsidy.batch_region');
+  function lastRegion() {
+    if (BATCH_REGIONS !== true) return '';
+    try { var v = str(window.localStorage.getItem(REGION_KEY)); return v === 'all' || REGION_ORDER.indexOf(v) >= 0 ? v : ''; } catch (e) { return ''; }
+  }
+  function keepRegion(r) {
+    if (BATCH_REGIONS !== true) return;
+    try { window.localStorage.setItem(REGION_KEY, r); } catch (e) { /* 存不了：下次照舊先列全部 */ }
+  }
+  function regionsOf(list) {   // [{r: 分署, t: [有梯次的縣市]}]
+    var have = {};
+    arr(list).forEach(function (b) {
+      var r = officeOf(b['上課地點']);
+      if (r) countiesOf(b['上課地點']).forEach(function (c) { if (OFFICE_COUNTIES[r].indexOf(c.slice(0, 2)) >= 0) (have[r] = have[r] || {})[c.slice(0, 2)] = 1; });
+    });
+    return REGION_ORDER.filter(function (r) { return have[r]; }).map(function (r) { return { r: r, t: OFFICE_COUNTIES[r].filter(function (c) { return have[r][c]; }) }; });
+  }
+  function regionTabs(list) {   // 要畫的區按鈕；梯次都在同一組（含認不出縣市的那一組）→ null（不畫）
+    var g = {};
+    arr(list).forEach(function (b) { g[officeOf(b['上課地點']) || '?'] = 1; });
+    return Object.keys(g).length > 1 ? regionsOf(list) : null;
+  }
+  function inRegion(b, r) { return r === 'all' || officeOf(b['上課地點']) === r; }
+  function openIn(list, r) { return arr(list).some(function (b) { return b['狀態'] === '開放報名' && inRegion(b, r); }); }
+  // 她的通訊地址（到選梯次這一步就知道的才算）：「不一樣」打的地址；「一樣」又是身分證欄位留空的，照卡片打的戶籍地址。
+  // 拍了身分證又選「一樣」的，要送出讀了身分證才知道 → ''
+  function addrNow() {
+    var q = qById('live'), o = q && optByT(q, state.a.live);
+    return !o ? '' : o.f ? followText(q) : noIdOn() ? textOf(qById('idAddr')) : '';
+  }
+  function regionAt(list, tabs) {
+    var rs = tabs.map(function (x) { return x.r; }), mine = officeOf(addrNow()), sel = null;
+    if (state.rg === 'all' || rs.indexOf(state.rg) >= 0) return state.rg;
+    if (state.batch) arr(list).forEach(function (b) { if (b['梯次'] === state.batch['梯次']) sel = b; });
+    if (sel) return officeOf(sel['上課地點']) || 'all';
+    if (mine) return openIn(list, mine) ? mine : 'all';
+    return fromMemory(list, tabs) || 'all';
+  }
+  // 她的地址認不出區時：這台電腦上次按的區（那一區有開放報名的梯次才算；上次按全部＝全部）
+  function fromMemory(list, tabs) {
+    var m = lastRegion();
+    return m === 'all' ? 'all' : m && tabs.some(function (x) { return x.r === m; }) && openIn(list, m) ? m : '';
+  }
+  function regionHint(list, at, tabs) {
+    var a = addrNow(), mine = officeOf(a), cs = countiesOf(a), where = cs.length === 1 ? cs[0] : '';
+    var mem = !mine && at !== 'all' && !state.rg && !(state.batch && arr(list).some(function (b) { return b['梯次'] === state.batch['梯次']; })) && fromMemory(list, tabs) === at;
+    var memTxt = mem ? '先列這台電腦上次看的' + tabs.filter(function (x) { return x.r === at; })[0].t.join('・') + '；要看別區按上面。' : '';
+    if (!where) return memTxt || (at === 'all' ? '先列全部梯次；要只看一區，按上面。' : '');
+    if (!mine) return '她的通訊地址在' + where + '，不在這幾區' + (memTxt ? '；' + memTxt : '。');
+    if (at === mine) return '她的通訊地址在' + where + '，先列' + mine + '的梯次；要看別區按上面。';
+    return '她的通訊地址在' + where + (openIn(list, mine) ? '（' + mine + '）；要看那一區按上面。' : '，' + mine + '現在沒有開放報名的梯次。');
+  }
+  // 選好的梯次不在現在列的這一區（寫手按了別區）：寫一行「已選：…（在…）」，選的那一梯不會看不見
+  function pickedHint(at, tabs) {
+    var sel = null;
+    if (state.batch) arr(batches).forEach(function (b) { if (b['梯次'] === state.batch['梯次']) sel = b; });
+    if (!sel || inRegion(sel, at)) return '';
+    var r = officeOf(sel['上課地點']), t = tabs.filter(function (x) { return x.r === r; })[0];
+    return '<p class="hint rgh" id="picked">已選：' + esc(str(sel['梯次'])) + '（在' + esc(t ? t.t.join('・') : '「全部」') + '）</p>';
+  }
+  function regionTabsHTML(tabs, at, act) {
+    return '<div class="rgs" role="group" aria-label="上課地區">' + tabs.concat([{ r: 'all', t: ['全部'] }]).map(function (x) {
+      return '<button type="button" class="pk" data-act="' + act + '" data-r="' + esc(x.r) + '" aria-pressed="' + (x.r === at) + '">' +
+        x.t.map(function (c) { return '<span class="nw">' + esc(c) + '</span>'; }).join('・') + '</button>';
+    }).join('') + '</div>';
+  }
   function batchHTML() {
     if (batchErr) return errHTML('batches', batchErr) +
       (RETRY[batchErr.code] ? '' : '<button type="button" class="btn btn2" data-act="reloadBatches">重新整理梯次</button>');
@@ -1236,22 +1429,26 @@ p.cn{margin:6px 0 2px}
     if (state.lineId) h += '<p class="hint">台中 LINE 報名的人，<span class="nw">只列「' + esc(LINE_CH) + '」的梯次。</span></p>';
     if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的' + (state.lineId ? '「' + esc(LINE_CH) + '」' : '') + '梯次。' +
       (state.lineId ? '<br>請先在後台新增梯次，報名管道選「' + esc(LINE_CH) + '」。' : '') + '</p></div>';
+    var tabs = BATCH_REGIONS === true ? regionTabs(batches) : null, at = tabs ? regionAt(batches, tabs) : 'all', tip = tabs ? regionHint(batches, at, tabs) : '';
+    if (tabs) h += regionTabsHTML(tabs, at, 'batchRg') + (tip ? '<p class="hint rgh">' + esc(tip) + '</p>' : '') +
+      (openCount() && !openIn(batches, at) ? '<div class="box warn"><p>這一區現在沒有開放報名的梯次，按上面的「全部」看別區。</p></div>' : '') + pickedHint(at, tabs);
     h += '<div class="opts" role="radiogroup" aria-labelledby="qt">';
     var year = todayTW().slice(0, 3), month = '';
     batches.forEach(function (b, i) {
+      if (!inRegion(b, at)) return;   // 分區（KNOWN 199）：別區的不畫（data-i 照全部梯次的順序）
       var d = normDate(b['開課日']);   // gotBatches 只留看得懂的
       if (d.slice(0, 6) !== month) {   // 換月份：上面一行月份（今年的只寫月；別年的寫民國年，跟梯次名稱一樣用民國）
         month = d.slice(0, 6);
         h += '<h3 class="mon">' + (d.slice(0, 3) === year ? '' : Number(d.slice(0, 3)) + ' 年 ') + Number(d.slice(4, 6)) + ' 月</h3>';
       }
       var ok = b['狀態'] === '開放報名', on = ok && !!state.batch && state.batch['梯次'] === b['梯次'];
-      var left = typeof b['已報人數'] === 'number' ? '已報 ' + b['已報人數'] + ' 位' : '可以報名';   // 名額只當參考（Tomi 10/20）
-      var say = str(b['梯次']) + ' ' + str(b['上課時間']) + '，' + (ok ? left : (b['狀態'] || '不能報名') + '，不能選');
+      var left = typeof b['已報人數'] === 'number' ? '已報 ' + b['已報人數'] + ' 位' : '可以報名';   // 名額只當參考（主辦 10/20）
+      var say = str(b['梯次']) + ' ' + str(b['上課時間']) + '，' + (str(b['開班']) ? '開班：' + str(b['開班']) + '，' : '') + (ok ? left : (b['狀態'] || '不能報名') + '，不能選');
       h += '<button type="button" class="opt bt" data-act="batch" data-i="' + i + '" role="radio" aria-label="' + esc(say) + '" aria-checked="' + (on ? 'true' : 'false') + '"' + (ok ? '' : ' disabled') + '>' +
         '<span class="mark">' + CHECK + '</span><span class="t">' +
-        '<span class="b1"><span>' + esc(str(b['梯次'])) + '</span> <span>' + esc(str(b['上課時間'])) + '</span></span>' +
+        '<span class="b1">' + titleSpans(str(b['梯次'])) + ' <span>' + esc(str(b['上課時間'])) + '</span></span>' +
         '<span class="b2">地點：' + esc(b['上課地點'] || '（未定）') + '</span>' +
-        '<span class="b2">辦訓單位：' + esc(b['辦訓單位'] || '（未定）') + '</span>' +
+        '<span class="b2">辦訓單位：' + esc(b['辦訓單位'] || '（未定）') + '</span>' + ownerLine(b) +
         '<span class="b3">' + (ok ? esc(left) : esc(b['狀態'] || '不能報名') + '，不能選') + '</span></span></button>';
     });
     return h + '</div><button type="button" class="alt" data-act="reloadBatches">重新整理梯次</button>';
@@ -1532,29 +1729,50 @@ p.cn{margin:6px 0 2px}
       fixField('ans.email', 'Email', { im: 'email', ph: '申請表要印，請跟她核對' }) + '</div>';   // 10/22：打錯直接改，不用回確認頁
   }
   // ---------- 通訊地址要在上課地點那個分署的轄區（KNOWN 167：規則 9「只提醒、不擋」的例外） ----------
-  // 高屏澎東的梯次 → 通訊地址要在高雄、屏東、澎湖、台東（Tomi 2026-11-06）；雲嘉南的梯次 → 要在雲林、嘉義、台南（Tomi 2026-11-08：
+  // 高屏澎東的梯次 → 通訊地址要在高雄、屏東、澎湖、台東（主辦 2026-11-06）；雲嘉南的梯次 → 要在雲林、嘉義、台南（主辦 2026-11-08：
   // 「要，一起做」）。通訊地址在別的分署，這邊會轉過去、那邊要她重補資料，審不完就上不了這一梯 → 擋到改成親友、娘家能收信的地址才能產生。
   // 縣市怎麼認跟雲端 app.py 收件分署()、後台 cohort-model.js branchOffice 同一條：寫了「縣市名＋市或縣」、臺當台，只認得到一個分署才算。
   // 認不出縣市的梯次不檢查；通訊地址認不出縣市（沒寫縣市）也擋，請她寫到縣市。同身分證地址的，讀取時雲端已把戶籍地址填進這一格
-  // 中彰投（台中、彰化、南投，2026-11-13 台中合辦）：認得分署（切結書預覽照台中版）；轄區檢查只做 AREA_MSG 有的分署（中彰投 11/13 Tomi 說要）
-  var OFFICE_COUNTIES = { '高屏澎東': ['高雄', '屏東', '澎湖', '台東'], '雲嘉南': ['雲林', '嘉義', '台南'], '中彰投': ['台中', '彰化', '南投'] };
+  // 中彰投（台中、彰化、南投，2026-11-13 台中合辦）：認得分署（切結書預覽照台中版）；轄區檢查只做 AREA_MSG 有的分署（中彰投 11/13 主辦說要）
+  // 11/17（KNOWN 199，主辦：「只要跳警示就好，寫手要不要繼續往下申請，就是寫手的權限」）：AREA_WARN_ONLY 是 true 的那一家不擋，
+  // 同一條認法改成黃字提醒（areaWarnMsg：講她的縣市、這一梯的分署、可能會被轉到別的分署審），照樣能產生
+  // 北基宜花金馬（台北、新北、基隆、宜蘭、花蓮、金門、連江，2026-11-17）：切結書預覽、迄日預設照高雄版（整套跟高屏澎東一樣），轄區照樣擋
+  // 桃竹苗（桃園、新竹市／縣、苗栗，2026-11-17）：切結書預覽照桃竹苗的無工作切結書（工會兩格、非負責人、兩條知悉），迄日預設留白，轄區照樣擋
+  var OFFICE_COUNTIES = { '高屏澎東': ['高雄', '屏東', '澎湖', '台東'], '雲嘉南': ['雲林', '嘉義', '台南'], '中彰投': ['台中', '彰化', '南投'],
+    '北基宜花金馬': ['台北', '新北', '基隆', '宜蘭', '花蓮', '金門', '連江'], '桃竹苗': ['桃園', '新竹', '苗栗'] };
   function officeOf(place) {
-    var all = [], seen = {}, re = /(高雄|屏東|澎湖|台東|雲林|嘉義|台南|台中|彰化|南投)[市縣]/g, m, t = str(place).replace(/臺/g, '台');
+    var all = [], seen = {}, re = /(高雄|屏東|澎湖|台東|雲林|嘉義|台南|台中|彰化|南投|台北|新北|基隆|宜蘭|花蓮|金門|連江|桃園|新竹|苗栗)[市縣]/g, m, t = str(place).replace(/臺/g, '台');
     while ((m = re.exec(t))) Object.keys(OFFICE_COUNTIES).forEach(function (o) { if (OFFICE_COUNTIES[o].indexOf(m[1]) >= 0 && !seen[o]) { seen[o] = 1; all.push(o); } });
     return all.length === 1 ? all[0] : '';
   }
   function classOffice() { return state.batch ? officeOf(state.batch['上課地點']) : ''; }   // 這一梯的分署；認不出＝''
-  function areaBad() {
+  // 地址裡寫到的縣市（全台；臺當台）：同一個縣市名只算一次、留第一次的寫法（臺東縣臺東市＝台東縣）。雲端 app.寫的縣市 同一條。
+  // 只用在提醒、選梯次的說明講「在哪個縣市」；認分署照舊用 officeOf
+  function countiesOf(place) {
+    var out = [], seen = {}, re = /(台北|新北|基隆|桃園|新竹|苗栗|台中|彰化|南投|雲林|嘉義|台南|高雄|屏東|宜蘭|花蓮|台東|澎湖|金門|連江)[市縣]/g, m, t = str(place).replace(/臺/g, '台');
+    while ((m = re.exec(t))) if (!seen[m[1]]) { seen[m[1]] = 1; out.push(m[0]); }
+    return out;
+  }
+  // 通訊地址不在這一梯的分署轄區（梯次認不出縣市、通訊地址空白不算）：沒開只提醒的那一家擋（areaBad），開了的只畫黃字（areaHTML）
+  function areaOff() {
     var o = classOffice();
     return !!AREA_MSG[o] && !!clean(state.fix['通訊地址']) && officeOf(state.fix['通訊地址']) !== o;
   }
+  function areaBad() { return areaOff() && AREA_WARN_ONLY !== true; }
   var AREA_MSG = {
     '高屏澎東': '她在高雄上課，通訊地址要在高雄、屏東、澎湖、台東：請問她親友、娘家能收信的地址，改好才能產生。',
     '雲嘉南': '她在台南上課，通訊地址要在雲林、嘉義、台南：請問她親友、娘家能收信的地址，改好才能產生。',
-    '中彰投': '她在台中上課，通訊地址要在台中、彰化、南投：請問她親友、娘家能收信的地址，改好才能產生。'   // Tomi 2026-11-13「要，跟高雄台南一樣」
+    '中彰投': '她在台中上課，通訊地址要在台中、彰化、南投：請問她親友、娘家能收信的地址，改好才能產生。',   // 主辦 2026-11-13「要，跟高雄台南一樣」
+    '北基宜花金馬': '她在台北上課，通訊地址要在台北、新北、基隆、宜蘭、花蓮、金門、連江：請問她親友、娘家能收信的地址，改好才能產生。',
+    '桃竹苗': '她在桃園上課，通訊地址要在桃園、新竹、苗栗：請問她親友、娘家能收信的地址，改好才能產生。'
   };
   function areaMsg() { return AREA_MSG[classOffice()] || ''; }
-  function areaHTML() { return areaBad() ? '<p class="areat">✘ ' + esc(areaMsg()) + '</p>' : ''; }
+  function areaWarnMsg() {   // 只提醒的那一家的黃字（雲端判讀那一條：app.轄區提醒句）
+    var o = classOffice(), cs = countiesOf(state.fix['通訊地址']);
+    return '她的通訊地址' + (cs.length === 1 ? '在' + cs[0] + '，不在' : (cs.length ? '寫了' + cs.join('、') : '看不出縣市') + '，不確定在不在') +
+      '這一梯的分署轄區（' + o + '：' + OFFICE_COUNTIES[o].join('、') + '）。申請可能會被轉到別的分署審，要繼續照樣能產生。';
+  }
+  function areaHTML() { return !areaOff() ? '' : AREA_WARN_ONLY === true ? '<p class="areaw">！ ' + esc(areaWarnMsg()) + '</p>' : '<p class="areat">✘ ' + esc(areaMsg()) + '</p>'; }
   // 打字時：大字的值、哪個按鈕是選的，跟著變（不整頁重畫，游標才不會跑掉）
   function paintBasic(k) {
     var row = document.getElementById('b_' + k), v = fixGet(k);
@@ -1857,9 +2075,11 @@ p.cn{margin:6px 0 2px}
   // 雲嘉南的梯次（台南上課，KNOWN 168）印雲嘉南切結書 V4：工會那行多「□職業工會□漁會□農會□屬裁減續保身分」（照名稱勾一格，
   // 跟 填官方表格.工會類型 同一條）、多一條「已知悉…就業保險投保單位」（一律勾）、沒有通訊地址那行；申請表後面多一張身分證影本，
   // 切結書在整份第 6 頁（身分證欄位留空的沒有那一張：第 5 頁）。高屏澎東、認不出縣市的梯次照舊
-  function unionKind(n) {
+  // 桃竹苗的梯次（11/17）印桃竹苗的無工作切結書：只有工會那兩格（類型五格，多「職災續保」，tz＝true 時先認「職災」）、非負責人、
+  // 兩條知悉條款（擇一適用、不予發給），沒有①②③、親屬那條、工會名稱線、戶籍地址；申請表、身分證影本、頁碼跟台南一樣
+  function unionKind(n, tz) {
     n = str(n);
-    var rules = [[['漁會'], '漁會'], [['農會', '農保'], '農會'], [['裁減'], '屬裁減續保身分'], [['工會'], '職業工會']];
+    var rules = (tz ? [[['職災'], '職災續保']] : []).concat([[['漁會'], '漁會'], [['農會', '農保'], '農會'], [['裁減'], '屬裁減續保身分'], [['工會'], '職業工會']]);
     for (var i = 0; i < rules.length; i++) if (rules[i][0].some(function (w) { return n.indexOf(w) >= 0; })) return rules[i][1];
     return '';
   }
@@ -1867,23 +2087,32 @@ p.cn{margin:6px 0 2px}
   function ymd(s) { var d = normDate(s); return d ? Number(d.slice(0, 3)) + d.slice(3) : ''; }   // 小字用：94/03/01
   function pvSig() { return JSON.stringify(J()['切結預覽'] || null); }
 
-  // 11/08（KNOWN 169，Tomi「照這個做」）：每一行旁邊「改」——勾／不勾／留白（她自己勾）、那一行的日期、名稱、台南版工會那四格勾哪一格
+  // 11/08（KNOWN 169，主辦「照這個做」）：每一行旁邊「改」——勾／不勾／留白（她自己勾）、那一行的日期、名稱、台南版工會那四格勾哪一格
   // 直接改（state.fix 切結改 → 核對後.切結改；雲端照它印，判讀的 切結預覽 就是改好的那份、切結自動 是系統算的）。改過的那一行黃框
   // 「已改」，「回到自動」拿掉；改了就要請她再看一次。跟勞保對不起來雲端回黃色提醒（只提醒、不擋），列在清單下面。
   // 工會那兩格（目前無加入／投保於…中）只會勾一格：當一行改（兩行的「改」打開同一個）。
   // 11/17（KNOWN 193，Tomi「切結書都要能改」）：工會那行的迄可以選「今」／留白／打日期（沒選＝雲端照梯次的分署：高屏澎東「今」、其他留白）；
   // 台中版親屬那條可以打「公司或用人單位名稱」（沒打＝不印，Tomi 11/13）；最上面「整份留白」一次把這一版每一行改成留白、「恢復成系統勾的」全部拿掉。
   // 舊雲端（判讀沒有 切結自動）不出「改」：送了它也不認
-  var PV_KEYS = ['①', '②', '③', '工會', '非負責人', '知悉親屬條款', '知悉投保單位'];
+  var PV_KEYS = ['①', '②', '③', '工會', '非負責人', '知悉親屬條款', '知悉投保單位', '知悉擇一', '知悉不予發給'];   // 最後兩條桃竹苗版才有
+  var PV_TZ_KEYS = ['工會', '非負責人', '知悉擇一', '知悉不予發給'];   // 桃竹苗版有的行（判讀.切結書的行）
+  var PV_YES = ['知悉投保單位', '知悉擇一', '知悉不予發給'];   // 系統沒算的知悉條款：沒有這個鍵＝勾
   var PV_FIELDS = { '①': ['原因', '日'], '②': ['起', '迄'], '工會': ['名稱', '起', '類型', '迄'], '知悉親屬條款': ['名稱'] };
   var PV_WHY = ['畢業', '退休/役', '離職', '求職日'], PV_KINDS = ['職業工會', '漁會', '農會', '屬裁減續保身分'];
+  var PV_TZ_KINDS = ['職業工會', '漁會', '農會', '職災續保', '屬裁減續保身分'];   // 桃竹苗版那五格
+  // 工會那行類型一格都沒勾時預覽的小字：tk 不在這一版的格子裡（認不出、點留白、換梯次帶來別版才有的「職災續保」）＝印出來都不勾
+  function pvNoKind(ks, tk, kSet) {
+    var n = ks.length === 5 ? '五' : '四';
+    return ks.indexOf(tk) >= 0 ? '' : kSet ? '；' + n + '格都不勾：她自己勾一格' : '；看名稱認不出是哪一種，印出來' + n + '格都沒勾：請她自己勾一格';
+  }
+  function pvKinds() { return classOffice() === '桃竹苗' ? PV_TZ_KINDS : PV_KINDS; }
   var PV_NOTE = '切結書改了，要請她再看一次、再唸一次。';
   var pvOpen = '', pvLate = false;   // 打開「改」的那一行；預覽回來時她正在改的格子裡打字：先不重畫，離開那幾格再畫
   var pvToDate = false;   // 工會迄日按了「打日期」（格子還空著時也照樣顯示打日期的格子）
   var PV_KIN_MAX = 38;   // 台中版親屬那條「公司或用人單位名稱」放得下的字數（跟 填官方表格.親屬單位名稱上限 同一個數）
   // 工會那行的迄日沒選＝雲端照梯次的分署（判讀.工會迄：高屏澎東「今日」、其他留白）：預設看梯次，不看系統算的工會
   // （系統沒算出工會、寫手手動勾「投保於…中」時，系統那份沒有迄；換了梯次預覽還沒回來也一樣）
-  function pvToDef() { return classOffice() === '高屏澎東' ? '今日' : ''; }
+  function pvToDef() { return classOffice() === '高屏澎東' || classOffice() === '北基宜花金馬' ? '今日' : ''; }   // 北基宜花金馬照高雄版（11/17）
   function pvIsTo(k, f) { return k === '工會' && f === '迄'; }
   function pvShape(v) {
     var o = {};
@@ -1906,7 +2135,7 @@ p.cn{margin:6px 0 2px}
     if (pvBlank(p, k)) return '留白';
     var on = k === '①' ? !!str(p['無工作原因']) : k === '②' ? !!(p['未投保工作'] && typeof p['未投保工作'] === 'object') :
       k === '③' ? p['逾180日'] === true : k === '工會' ? !!(p['工會'] && typeof p['工會'] === 'object') :
-      k === '知悉投保單位' ? p[k] !== false : p[k] === true;
+      PV_YES.indexOf(k) >= 0 ? p[k] !== false : p[k] === true;
     return on ? '勾' : '不勾';
   }
   function pvValOf(p, k, f) {
@@ -1958,6 +2187,7 @@ p.cn{margin:6px 0 2px}
   function pvToSay(v) { v = str(v); return v === '今日' ? '至「今」' : v ? '至 ' + ymd(v) : '迄日留白'; }
   function pvToMode() { var v = pvVal('工會', '迄'); return v === '今日' ? '今' : v || pvToDate ? '日期' : '留白'; }
   function pvEditHTML(k, tn) {
+    var tz = classOffice() === '桃竹苗';
     var st = pvState(k), u = k === '工會', o = PV()[k];
     var opts = u ? [['勾', '勾「投保於…中」'], ['不勾', '勾「本人目前無加入」'], ['留白', '兩格都留白（她自己勾）']]
       : [['勾', '勾'], ['不勾', '不勾'], ['留白', '留白（她自己勾）']];
@@ -1979,7 +2209,7 @@ p.cn{margin:6px 0 2px}
       fixField('pv.②.迄', '到', { plain: true, ph: '例 114/12/31（空白＝她手寫）' });
     if (st === '勾' && u) {
       var to = pvToMode(), def = pvToDef() ? '印「今」' : '留白';
-      h += fixField('pv.工會.名稱', '名稱', { plain: true, ph: '例 高雄市美容職業工會' }) + fixField('pv.工會.起', '起', { plain: true, ph: '例 114/02/01' }) +
+      h += fixField('pv.工會.名稱', tz ? '名稱（桃竹苗版不印，照名稱認勾哪一格）' : '名稱', { plain: true, ph: '例 高雄市美容職業工會' }) + fixField('pv.工會.起', '起', { plain: true, ph: '例 114/02/01' }) +
         '<p class="flabel">「至＿年＿月＿日止」（這個梯次預設' + def + '）</p><div class="chips">' +
         [['今', '印「今」'], ['留白', '留白（她自己寫）'], ['日期', '打日期']].map(function (x) {
           return chip('pvTo', x[0], to === x[0], x[1]); }).join('') + '</div>';
@@ -1987,11 +2217,12 @@ p.cn{margin:6px 0 2px}
       h += '<p class="hint">' + (to === '今' ? '印出來「至　年　月今日止」，她不用寫。' : to === '留白' ? '印出來空著，請她寫今天（跟最下面的日期一樣）。'
         : '印打的日期；空白＝她手寫。') + '</p>';
       if (to === '今' && tn) h += '<div class="box warn"><p>台南承辦說工會要寫到申請那天的日期、不收「至今」，確定要印「今」嗎？（只提醒，照樣能產生）</p></div>';
-      if (tn) {
-        var kind = o && '類型' in o ? o['類型'] : null, guess = unionKind(pvVal('工會', '名稱'));
-        h += '<p class="flabel">台南版「□職業工會□漁會□農會□屬裁減續保身分」勾哪一格' +
+      if (tn || tz) {
+        var kind = o && '類型' in o ? o['類型'] : null, guess = unionKind(pvVal('工會', '名稱'), tz), ks = pvKinds();
+        if (kind !== null && ks.indexOf(kind) < 0) kind = '';   // 換了梯次（桃竹苗的「職災續保」到台南版）：這一版沒有那格＝不勾（雲端也當空的）
+        h += '<p class="flabel">' + (tz ? '桃竹苗版' : '台南版') + '「' + ks.map(function (x) { return '□' + x; }).join('') + '」勾哪一格' +
           (kind === null ? '（現在照名稱：' + (guess || '認不出來，不勾') + '）' : '') + '</p><div class="chips">' +
-          PV_KINDS.concat(['']).map(function (x) { return chip('pvKind', x, kind === x, x || '留白（她自己勾）'); }).join('') + '</div>';
+          ks.concat(['']).map(function (x) { return chip('pvKind', x, kind === x, x || '留白（她自己勾）'); }).join('') + '</div>';
       }
     }
     return h + '<div class="pvbar"><button type="button" class="btn btn2 sm" data-act="pvDone">好了</button>' +
@@ -2012,8 +2243,11 @@ p.cn{margin:6px 0 2px}
     });
     return po;
   }
-  // 整份留白（11/17）：這一版有的每一行（台南版多「知悉投保單位」）
-  function pvKeysOf(tn) { return PV_KEYS.filter(function (k) { return k !== '知悉投保單位' || tn; }); }
+  // 整份留白（11/17）：這一版有的每一行（台南版多「知悉投保單位」；桃竹苗版只有 PV_TZ_KEYS）
+  function pvKeysOf(tn) {
+    if (classOffice() === '桃竹苗') return PV_TZ_KEYS.slice();
+    return PV_KEYS.filter(function (k) { return k !== '知悉擇一' && k !== '知悉不予發給' && (k !== '知悉投保單位' || tn); });
+  }
   function pvAllBlank(tn) { return pvKeysOf(tn).every(function (k) { return obj(PV()[k])['勾'] === '留白'; }); }
   function pvAllHTML(tn) {
     var all = pvAllBlank(tn), any = Object.keys(PV()).length > 0;
@@ -2028,8 +2262,9 @@ p.cn{margin:6px 0 2px}
   }
   function previewHTML() {
     var tn = classOffice() === '雲嘉南', tc = classOffice() === '中彰投';   // tc：台中版（中彰投 1-5，11/13）
+    var tz = classOffice() === '桃竹苗';   // tz：桃竹苗無工作切結書（11/17）
     var j = J(), p = j['切結預覽'], hand = false, h = '<h3 class="st2">' +
-      (tn || tc ? '切結書（' + (tn ? '台南' : '台中') + '版，整份第 ' + (sheetNoId() ? 5 : 6) + ' 頁）會這樣印' : '切結書（整份第 5 頁）會這樣印') + '</h3>' +
+      (tn || tc || tz ? '切結書（' + (tn ? '台南' : tc ? '台中' : '桃竹苗') + '版，整份第 ' + (sheetNoId() ? 5 : 6) + ' 頁）會這樣印' : '切結書（整份第 5 頁）會這樣印') + '</h3>' +
       '<p class="hint" id="pvst" role="status">' + esc(pvText()) + '</p>';
     if (!p || typeof p !== 'object') return h + factsHTML(j);
     var can = pvCan(), pv = can ? PV() : {}, a = pvAuto();
@@ -2060,8 +2295,29 @@ p.cn{margin:6px 0 2px}
       (ymd(two['起']) || '＿') + '～' + (ymd(two['迄']) || '＿') + '：' + job + (!two['起'] || !two['迄'] ? '；空著的日期印出來她手寫' : '');
     var late = str(j['滿180天日']) && str(j['今天']) && str(j['滿180天日']) > str(j['今天']);
     var uKind = arr(j['投保鏈']).some(function (c) { c = obj(c); return c['投保單位'] === u['名稱'] && c['類型'] === '農會'; }) ? '農保' : '勞保';
-    var kSet = '類型' in u, tk = tn && inU ? (kSet ? str(u['類型']) : unionKind(u['名稱'])) : '';   // 台南版工會那行勾哪一格（現場點的優先）
+    var kSet = '類型' in u, tk = (tn || tz) && inU ? (kSet ? str(u['類型']) : unionKind(u['名稱'], tz)) : '';   // 台南版、桃竹苗版工會那行勾哪一格（現場點的優先）
     var uBlank = pvBlank(p, '工會');
+    if (tz) {   // 桃竹苗無工作切結書：表上有的行才列（11/17）
+      h += '<ul class="ck pv">' +
+        li('工會', !inU && !uBlank, '本人目前無加入職業工會、農會、漁會或裁減續保中。', inU ? '不勾（下一行）' : '勞保、農保上現在沒有保工會、農保、漁保', true) +
+        li('工會', inU, '本人自 ' + (inU ? day(u['起']) : '＿年＿月＿日') + '起至' +
+          (!inU ? ' ＿年＿月＿日' : u['迄'] === '' ? ' ' + day('') : u['迄'] && u['迄'] !== '今日' ? ' ' + day(u['迄']) : '今日') +
+          '止，投保於' + PV_TZ_KINDS.map(function (k) { return box(k === tk, k); }).join('') + '者中，但確實無工作。',
+          inU ? (ymd(u['起']) || '＿') + ' 起：' + uKind + '上「' + u['名稱'] + '」加保那天，現在還在保（桃竹苗版不印名稱）' +
+            (u['迄'] === '' ? '；「至＿年＿月＿日止」留白：請她寫今天，跟最下面的日期一樣' :
+              u['迄'] === '今日' ? '；「至今日止」系統印好，不用寫' : '；「至」的日期照印 ' + ymd(u['迄'])) +
+            pvNoKind(PV_TZ_KINDS, tk, kSet) : '不勾') +
+        li('非負責人', p['非負責人'] === true, '本人確實未有依公司法或商業登記法等規定擔任他單位法定負責人之情事。',
+          w['店後來'] === '還是她的名字' ? '她開的店還掛她的名字：這一格會不實，請跟她確認' : '報名前已篩過，人人都勾') +
+        li('知悉擇一', p['知悉擇一'] !== false, '婦女受僱於同一雇主，申請再就業獎勵，與下列補助、津貼或獎勵，應擇一適用，不得重複：（下面四款）',
+          '桃竹苗版才有這一條，人人都勾') +
+        li('知悉不予發給', p['知悉不予發給'] !== false, '婦女申請再就業獎勵，有下列情形之一者，應不予發給；已發給者，經撤銷或廢止後，應以書面行政處分令其限期返還：（下面五款）',
+          '桃竹苗版才有這一條，人人都勾') +
+        '</ul><p class="hint">下面印身分證字號、通訊地址、手機（桃竹苗版沒有戶籍地址那行）；立書人簽章、日期她手寫。</p>';
+      if (hand) h += '<p class="hint">「＿年＿月＿日」的日期，印出來她手寫。</p>';
+      if (can) h += pvWarnHTML(j);
+      return h + factsHTML(j);
+    }
     h += '<ul class="ck pv">' +
       li('①', one, '自 ' + (one ? day(p['無工作起日']) : '＿年＿月＿日') + ' ' + box(why === '畢業', '畢業') + ' ' + box(retire, '退休/役') + ' ' +
         box(why === '離職', '離職(最後一份工作)') + ' ' + box(why === '求職日', '求職日') + ' 至今確實無工作。', src1) +
@@ -2076,7 +2332,7 @@ p.cn{margin:6px 0 2px}
         inU ? (ymd(u['起']) || '＿') + ' 起：' + uKind + '上「' + u['名稱'] + '」加保那天，現在還在保' +
           (u['迄'] === '' ? '；「至＿年＿月＿日止」留白：請她寫今天，跟最下面的日期一樣' :
             u['迄'] === '今日' ? '；「至今日止」系統印好，不用寫' : '；「至」的日期照印 ' + ymd(u['迄'])) +
-          (tn && !tk ? (kSet ? '；四格都不勾：她自己勾一格' : '；看名稱認不出是哪一種，印出來四格都沒勾：請她自己勾一格') : '') : '不勾') +
+          (tn ? pvNoKind(PV_KINDS, tk, kSet) : '') : '不勾') +
       (tc ? li('知悉親屬條款', p['知悉親屬條款'] === true, '本人確實非為（公司或用人單位名稱：' + (str(p['親屬單位名稱']) || '＿＿＿') +
         '）雇主或其負責人之配偶、直系血親或三親等內之旁系血親。',
         '人人都勾；公司或用人單位名稱' + (str(p['親屬單位名稱']) ? '印現場打的' : '留白')) : '') +
@@ -2091,7 +2347,7 @@ p.cn{margin:6px 0 2px}
     return h + factsHTML(j);
   }
 
-  // ---------- 她看過，都對（Tomi 10/15 定：一定要按才能產生；10/22 起連切結書一起確認。基本資料、切結書改了就自動取消，要再按一次） ----------
+  // ---------- 她看過，都對（主辦 10/15 定：一定要按才能產生；10/22 起連切結書一起確認。基本資料、切結書改了就自動取消，要再按一次） ----------
   function seenOk() { return state.fix['基本資料']['她看過都對'] === true; }
   // 取消「她看過，都對」；why＝框裡說為什麼要再按一次（只有原本按過才說）
   function unsee(why) { var b = state.fix['基本資料']; if (b['她看過都對']) { b['她看過都對'] = false; seenNote = why || '基本資料改過了，要請她再看一次。'; } }
@@ -2405,7 +2661,7 @@ p.cn{margin:6px 0 2px}
   }
   // 台南版工會那四格：點一格＝勾那格；再點同一格＝照名稱認（拿掉）；留白＝四格都不勾
   function onPvKind(v) {
-    if (v && PV_KINDS.indexOf(v) < 0) return;
+    if (v && pvKinds().indexOf(v) < 0) return;
     if (!PV()['工會'] || PV()['工會']['勾'] !== '勾') PV()['工會'] = pvMake('工會', '勾');
     var o = PV()['工會'];
     if ('類型' in o && o['類型'] === v) delete o['類型']; else o['類型'] = v;
@@ -2435,9 +2691,12 @@ p.cn{margin:6px 0 2px}
   // ---------- 列印頁 ----------
   // 手機、平板（學員自己的手機）：印表機在店裡的電腦 → 最上面叫她去列印站點自己的名字；這裡的列印按鈕縮小放最下面當退路。
   // 文件沒存進雲端（試算表暫時連不上）列印站就看不到，照舊在這裡印
+  // 寫手的手機（KNOWN 207，亞拿 11/18 Tomi「現在改」；判斷同 KNOWN 204 的 stWriter）：寫手進不了列印站 → 不叫她去列印站，
+  // 列印按鈕照電腦的樣子放最上面，下面一行「我協助的學員」；沒存進雲端換一句「之後看不到，現在就印或下載」。沒開寫手代碼的那一家不會走到
   function printHTML() {
     var o = obj(state.out), n = Number(o['頁數']) || 0, nm = nameOf(), pf = files.pdf_print, ef = files.pdf_env;
-    var far = TOUCH && o['已存雲端'] !== false, c1 = far ? 'btn btn2 sm' : 'btn', c2 = far ? 'btn btn2 sm' : 'btn btn2';
+    var wr = TOUCH && stWriter(), saved = o['已存雲端'] !== false;
+    var far = TOUCH && !wr && saved, c1 = far ? 'btn btn2 sm' : 'btn', c2 = far ? 'btn btn2 sm' : 'btn btn2';
     var h = '<h1>申請文件做好了</h1><p class="lead">學員：' + esc(nm) + '<span class="nw">（編號 ' + state.rid + '）</span></p>';
     if (!pf) return h + '<div class="box warn"><p>申請文件沒有存到，要再產生一次。</p></div>' +
       '<button type="button" class="btn" data-act="toReview">回到核對頁</button>';
@@ -2445,13 +2704,23 @@ p.cn{margin:6px 0 2px}
     var who = '點「' + esc(nm) + '」';
     if (far) h += '<div class="box go"><p><span class="nw">請到櫃台電腦的</span><span class="nw">「列印站」，</span>' +
       (nm.length > 5 ? who : '<span class="nw">' + who + '</span>') + '<span class="nw">的名字列印</span></p></div>';
-    else if (TOUCH) h += '<div class="box err"><p>' + ['這份申請文件', '沒有存進雲端，', '櫃台電腦的「列印站」', '看不到。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') +
+    else if (wr && !saved) h += '<div class="box err"><p>' + ['這份沒有存進雲端，', '之後在「我協助的學員」看不到，', '請現在就印出來', '或按「下載 PDF」存在手機。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') + '</p></div>';
+    else if (TOUCH && !wr) h += '<div class="box err"><p>' + ['這份申請文件', '沒有存進雲端，', '櫃台電腦的「列印站」', '看不到。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') +
       '<br>' + ['請把這支手機', '拿給現場人員，', '用下面的按鈕列印。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') + '</p></div>';
-    var btns = (TOUCH ? '<p class="hint">按「列印」會在新分頁打開 PDF，<span class="nw">再按「分享」→「列印」。</span>印完回到這一頁。</p>' : '') +
+    var hd = function (s) { return far ? '<h3 class="st2">' + s + '</h3>' : '<h2 class="st">' + s + '</h2>'; };
+    var dlA = function (f, base) { return '<a class="btn btn2 sm" href="' + esc(f.url) + '" download="' + esc(base + '_' + nm + '.pdf') + '">下載 PDF</a>'; };
+    // 下載（DOC_DOWNLOAD，亞拿 11/17，Tomi 點頭的排法）：每份文件一個小標 → 整排列印 → 下面並排「下載 PDF」「下載 Word」；頁數移到小標
+    var btns = (wr ? '<p class="hint">按「列印申請文件」會在新分頁打開 PDF，<span class="nw">用「分享」或瀏覽器選單的「列印」。</span>印完回到這一頁。</p>' :
+      TOUCH ? '<p class="hint">按「列印」會在新分頁打開 PDF，<span class="nw">再按「分享」→「列印」。</span>印完回到這一頁。</p>' : '') + (DL_ON ?
+      hd('申請文件' + (n ? '（共 ' + n + ' 頁）' : '')) + printBtn('pdf_print', '列印申請文件', c1, '申請文件') +
+      dlRowHTML('pp', state.rid, nm, '申請文件', dlA(pf, '申請文件')) +
+      (ef ? hd('信封') + '<p class="lead">先把 A4 牛皮紙信封<span class="nw">放進印表機。</span></p>' + printBtn('pdf_env', '印信封', c2, '信封') +
+        dlRowHTML('pp', state.rid, nm, '信封', dlA(ef, '信封')) : '') + dlNoteHTML() :
       printBtn('pdf_print', '列印申請文件' + (n ? '（共 ' + n + ' 頁）' : ''), c1, '申請文件') +
       '<a class="' + c2 + '" href="' + esc(pf.url) + '" download="' + esc('申請文件_' + nm + '.pdf') + '">下載 PDF</a>' +
-      (ef ? (far ? '<h3 class="st2">信封</h3>' : '<h2 class="st">信封</h2>') + '<p class="lead">先把 A4 牛皮紙信封<span class="nw">放進印表機。</span></p>' + printBtn('pdf_env', '印信封', c2, '信封') : '');
+      (ef ? (far ? '<h3 class="st2">信封</h3>' : '<h2 class="st">信封</h2>') + '<p class="lead">先把 A4 牛皮紙信封<span class="nw">放進印表機。</span></p>' + printBtn('pdf_env', '印信封', c2, '信封') : ''));
     if (!far) h += btns;
+    if (wr && saved) h += '<p class="hint">之後要再印：<span class="nw">開始畫面的「我協助的學員」</span><span class="nw">（開課當天前都看得到）。</span></p>';
     h += '<h2 class="st">要簽名、手寫的地方</h2>' + (arr(o['簽名處']).length ? '<ol class="plist">' + arr(o['簽名處']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>' : '<p>（沒有資料）</p>');
     if (arr(o['提醒']).length) h += '<h2 class="st">提醒</h2><ul class="plist">' + arr(o['提醒']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
     if (far) h += '<h2 class="st">列印站印不出來的時候</h2>' + btns;
@@ -2513,6 +2782,12 @@ p.cn{margin:6px 0 2px}
   var stList = null, stKey = '', stErr = '', stAt = '', stLoading = false, stSeq = 0, stTimer = 0;
   var stActive = Date.now(), stIdle = false, stChanged = 0, stJob = '', stUrls = {};
   var begun = false;           // 報名畫面開始過了沒（做到一半的照片、檔案拿回來了沒）
+  // 列印站只認店裡的碼（KNOWN 204，亞拿 11/17「對寫手關掉」）：這台記的是寫手（雲端回的名字不是「主辦」）→ 開始畫面沒有那顆；用網址
+  // 進來、或雲端回 staff_only（403，不清代碼）→ 只放那句話＋「我協助的學員」＋「回報名畫面」。沒開寫手代碼的那一家
+  // writerName 一直是空的、雲端也不會回 staff_only：跟以前一樣
+  var ST_STAFF = '列印站只有店裡的通關碼能用。補印你協助的學員，請按開始畫面的「我協助的學員」。';
+  var stDenied = '';
+  function stWriter() { return CODE_ON && !G_TOKEN && !!writerName && writerName !== '主辦'; }
 
   function atStation() {
     var h = location.hash.slice(1);
@@ -2523,6 +2798,8 @@ p.cn{margin:6px 0 2px}
     if (!atStation()) { try { history.pushState(null, '', '#' + ST_HASH); } catch (e) { /* 網址沒變也照常用 */ } }
     view = 'station';
     if (codeMissing()) { codeWhy = 'first'; codeBack = 'station'; view = 'code'; render(); return; }
+    stDenied = stWriter() ? ST_STAFF : '';
+    if (stDenied) { render(); try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ } return; }
     if (!stTimer) stTimer = setInterval(stTick, ST_EVERY);
     stActive = Date.now();
     stIdle = false;
@@ -2530,11 +2807,15 @@ p.cn{margin:6px 0 2px}
     try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
     stLoad();
   }
-  function closeStation() {
+  function stStop() {
     clearInterval(stTimer);
     Object.keys(stUrls).forEach(function (k) { URL.revokeObjectURL(stUrls[k]); });
-    stTimer = 0; stUrls = {}; stList = null; stKey = ''; stErr = ''; stJob = ''; stLoading = false; stSeq++;
+    stTimer = 0; stUrls = {}; stList = null; stKey = ''; stErr = ''; stJob = ''; stLoading = false; stSeq++; stDenied = '';
+    dlReset();
     if (atStation()) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 同上 */ } }
+  }
+  function closeStation() {
+    stStop();
     view = 'screen';
     if (!begun) { begin(); return; }
     render();
@@ -2549,8 +2830,18 @@ p.cn{margin:6px 0 2px}
   }
   function paintStat() { var el = document.getElementById('stStat'); if (el) el.textContent = stStatus(); }
 
+  // 雲端說列印站只認店裡的碼（KNOWN 204）：名單、拿到的 PDF 丟掉，換那句話；代碼不清
+  function stDeny(r) {
+    if (r.code !== 'staff_only') return false;
+    Object.keys(stUrls).forEach(function (k) { URL.revokeObjectURL(stUrls[k]); });
+    stUrls = {}; stList = null; stKey = ''; stErr = ''; stDenied = r.msg || ST_STAFF;
+    dlReset();
+    clearInterval(stTimer); stTimer = 0;
+    render();
+    return true;
+  }
   function stLoad() {
-    if (stLoading) return;
+    if (stLoading || stDenied) return;
     if (!API) { stList = []; render(); return; }   // 測試模式：沒有連雲端服務，名單一直是空的
     var my = ++stSeq;
     stLoading = true;
@@ -2560,7 +2851,7 @@ p.cn{margin:6px 0 2px}
       stLoading = false;
       if (view !== 'station') return;
       if (!r.ok) {
-        if (codeRejected(r)) return;
+        if (codeRejected(r) || stDeny(r)) return;
         stErr = errHTML('recent', r);   // 舊名單留著
         render();
         return;
@@ -2580,7 +2871,7 @@ p.cn{margin:6px 0 2px}
     });
   }
   function stTick() {
-    if (view !== 'station' || stIdle || document.hidden) return;
+    if (view !== 'station' || stIdle || stDenied || document.hidden) return;
     if (Date.now() - stActive > ST_IDLE) { stIdle = true; paintStat(); return; }
     stLoad();
   }
@@ -2591,8 +2882,12 @@ p.cn{margin:6px 0 2px}
   }
 
   function stationHTML() {
+    if (stDenied) return '<h1>列印站</h1><div class="box warn"><p>' + esc(stDenied) + '</p></div>' +
+      '<button type="button" class="btn" data-act="stMine">我協助的學員</button>' +
+      '<div class="foot"><button type="button" class="linkbtn" data-act="stExit">回報名畫面</button></div>';
     var h = '<h1>剛產好的申請文件</h1><div class="sbar"><p class="hint" id="stStat">' + esc(stStatus()) + '</p>' +
       '<button type="button" class="btn btn2 sm" data-act="stReload">重新整理</button></div>';
+    if (stList && stList.length) h += dlNoteHTML();   // 下載 Word 的提醒：整頁一次（KNOWN 205 暫用）
     if (stErr) h += stErr;
     h += '<div id="msg" role="alert"></div>';
     if (stList === null) h += stErr ? '' : '<div class="box warn" role="status"><p>正在讀取，請稍等…</p></div>';
@@ -2604,8 +2899,8 @@ p.cn{margin:6px 0 2px}
     var no = Number(d['編號']), nm = str(d['姓名']) || '（沒有姓名）';
     var h = '<li class="srow"><p class="shead"><span class="stime">' + esc((d['昨天'] ? '昨天 ' : '') + str(d['時間'])) + '</span>' +
       '<span class="sname">' + esc(nm) + '</span><span class="smeta">' + esc(str(d['梯次'])) + '<span class="nw">｜編號 ' + no + '</span></span></p>' +
-      '<div class="sbtns"><div>' + stBtn(no, nm, '申請文件', '列印申請文件', 'btn') + '</div>';
-    if (d['有信封']) h += '<div><p class="snote">先把 A4 牛皮紙信封放進印表機</p>' + stBtn(no, nm, '信封', '印信封', 'btn btn2') + '</div>';
+      '<div class="sbtns"><div>' + stBtn(no, nm, '申請文件', '列印申請文件', 'btn') + (DL_ON ? dlRowHTML('st', no, nm, '申請文件') : '') + '</div>';
+    if (d['有信封']) h += '<div><p class="snote">先把 A4 牛皮紙信封放進印表機</p>' + stBtn(no, nm, '信封', '印信封', 'btn btn2') + (DL_ON ? dlRowHTML('st', no, nm, '信封') : '') + '</div>';
     // 退路連結統一放在兩顆按鈕下面一行，按鈕才不會一高一低
     var links = ['申請文件', '信封'].filter(function (k) { return stUrls[no + '|' + k]; }).map(function (k) {
       return '<a href="' + esc(stUrls[no + '|' + k]) + '" target="_blank" rel="noopener">' + esc(k) + '</a>';
@@ -2633,7 +2928,7 @@ p.cn{margin:6px 0 2px}
         stJob = '';
         if (view !== 'station') return;
         var b = r.ok ? b64Blob(r.data.base64, 'application/pdf') : null, n = r.ok ? Number(r.data['頁數']) || 0 : 0;
-        if (!r.ok && codeRejected(r)) return;
+        if (!r.ok && (codeRejected(r) || stDeny(r))) return;
         if (!b) {
           render();
           putMsg(errHTML('packet', r.ok ? { code: 'internal', msg: '雲端服務回的檔案是空的。' } : r,
@@ -2649,13 +2944,247 @@ p.cn{margin:6px 0 2px}
       });
   }
 
+  // ---------- 我協助的學員（KNOWN 202，亞拿 11/17：寫手回頭補印自己學員的申請文件、信封；規格第 18 節） ----------
+  // 只有雲端說這個代碼是哪位寫手（writerName 有值：開了寫手代碼的那一家，寫手代碼或共用的店裡碼＝主辦）才有開始畫面那顆；沒開的那一家
+  // （雲端不回寫手）、學員手機的碼都沒有，畫面跟以前一樣。誰看得到哪幾位由雲端算好（寫手只看自己記到的、主辦看全部、那一梯開課當天
+  // 以前），網頁不判斷。列印照列印站：電腦隱藏框叫列印視窗＋新分頁退路、平板手機在新分頁打開；PDF 只放記憶體，重新整理、離開就丟掉
+  var myList = null, myAll = false, myErr = '', myLoading = false, mySeq = 0, myJob = '', myUrls = {};
+
+  function mineHomeHTML() {
+    if (!CODE_ON || G_TOKEN || !writerName) return '';
+    return '<div class="foot"><button type="button" class="btn btn2" data-act="mine">我協助的學員</button></div>';
+  }
+  // PDF 丟掉：連結收回、叫列印視窗用的隱藏框也拿掉（店裡的電腦換寫手、通關碼不對回代碼畫面時，上一位寫手的 PDF 不留在這頁）
+  function myDrop() {
+    Object.keys(myUrls).forEach(function (k) { URL.revokeObjectURL(myUrls[k]); });
+    myUrls = {};
+    dlReset();
+    var fr = document.getElementById('pframe');
+    if (fr && fr.parentNode) fr.parentNode.removeChild(fr);
+  }
+  function openMine() {
+    myDrop();
+    myList = null; myAll = false; myErr = ''; myJob = ''; myLoading = false; mySeq++;
+    view = 'mine';
+    render();
+    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
+    myLoad();
+  }
+  function closeMine() {
+    myDrop();
+    myList = null; myErr = ''; myJob = ''; myLoading = false; mySeq++;
+    view = 'screen';
+    if (!begun) { begin(); return; }   // 從列印站那句話過來的（KNOWN 204）：報名畫面還沒開始過，先把做到一半的拿回來
+    render();
+    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
+  }
+  function myLoad() {
+    if (myLoading) return;
+    if (!API) { myList = []; render(); return; }   // 測試模式：沒有連雲端服務，名單一直是空的
+    var my = ++mySeq;
+    myLoading = true;
+    render();
+    api('GET', '/api/mine', null, WAIT_MS.mine, function (r) {
+      if (my !== mySeq) return;
+      myLoading = false;
+      if (view !== 'mine') return;
+      if (!r.ok) {
+        if (codeRejected(r)) return;
+        myErr = errHTML('mine', r);   // 舊名單留著
+        render();
+        return;
+      }
+      myErr = '';
+      myDrop();   // 重新整理：拿到的 PDF 丟掉（她可能換班重產了），要印再按一次
+      myAll = r.data['主辦'] === true;
+      myList = arr(r.data['梯次']).map(obj).map(function (b) {
+        return { b: b, people: arr(b['學員']).map(obj).filter(function (d) { return Number(d['編號']) > 0; }) };
+      }).filter(function (x) { return x.people.length; });
+      render();
+    });
+  }
+  function mineHTML() {
+    var h = '<h1>我協助的學員</h1><div class="sbar"><p class="hint">' + (myAll ? '全部寫手' : '你') + '協助報名、<span class="nw">還沒開課的學員</span>' +
+      '<span class="nw">（開課當天還看得到）。</span></p>' +
+      '<button type="button" class="btn btn2 sm" data-act="myReload"' + (myLoading ? ' aria-disabled="true"' : '') + '>' + (myLoading ? '讀取中…' : '重新整理') + '</button></div>';
+    if (myList && myList.length) h += dlNoteHTML();   // 下載 Word 的提醒：整頁一次
+    if (myErr) h += myErr;
+    h += '<div id="msg" role="alert"></div>';
+    if (myList === null) h += myErr ? '' : '<div class="box warn" role="status"><p>正在讀取，請稍等…</p></div>';
+    else if (!myList.length) h += '<div class="box warn"><p>目前沒有可以印的學員。<br>學員的申請文件產出後，到她那一梯開課當天，這裡都看得到。</p></div>';
+    else myList.forEach(function (x) {   // 雲端已經照開課日近到遠排好、一梯一段
+      h += '<h2 class="mon">' + esc(str(x.b['梯次'])) + ' <span class="nw">' + esc(str(x.b['上課時間'])) + '</span></h2>' +
+        (x.b['上課地點'] ? '<p class="hint">地點：' + esc(str(x.b['上課地點'])) + '</p>' : '') +
+        '<ol class="slist">' + x.people.map(myRowHTML).join('') + '</ol>';
+    });
+    return h + '<div class="foot"><button type="button" class="linkbtn" data-act="myExit">回報名畫面</button></div>';
+  }
+  function myRowHTML(d) {
+    var no = Number(d['編號']), nm = str(d['姓名']) || '（沒有姓名）', day = normDate(d['報名日']);
+    var meta = (day ? Number(day.slice(4, 6)) + ' 月 ' + Number(day.slice(7, 9)) + ' 日報名' : '') + '<span class="nw">｜編號 ' + no + '</span>' +
+      (myAll ? '<span class="nw">｜寫手 ' + esc(str(d['寫手']) || '還沒記') + '</span>' : '');
+    var h = '<li class="srow"><p class="shead"><span class="sname">' + esc(nm) + '</span><span class="smeta">' + meta + '</span></p>' +
+      '<div class="sbtns"><div>' + myBtn(no, nm, '申請文件', '列印申請文件', 'btn') + (DL_ON ? dlRowHTML('my', no, nm, '申請文件') : '') + '</div>';
+    if (d['有信封']) h += '<div><p class="snote">先把 A4 牛皮紙信封放進印表機</p>' + myBtn(no, nm, '信封', '印信封', 'btn btn2') + (DL_ON ? dlRowHTML('my', no, nm, '信封') : '') + '</div>';
+    // 平板手機：拿到的 PDF 已經換成大按鈕（myBtn），不另外放退路那一行（手機沒有列印視窗）
+    var links = TOUCH ? [] : ['申請文件', '信封'].filter(function (k) { return myUrls[no + '|' + k]; }).map(function (k) {
+      return '<a href="' + esc(myUrls[no + '|' + k]) + '" target="_blank" rel="noopener">' + esc(k) + '</a>';
+    });
+    return h + '</div>' + (links.length ? '<p class="sfall">列印視窗沒有出來？用新分頁打開：' + links.join('') + '</p>' : '') + '</li>';
+  }
+  // 平板手機拿到 PDF 之後：原地換成同樣大小的實心大按鈕（新分頁打開的連結），按一下就開 PDF（主對話 11/17：手機要點兩次、第二次點小字會卡住）
+  function myBtn(no, nm, kind, label, cls) {
+    var url = TOUCH && myUrls[no + '|' + kind];
+    if (url) return '<a class="btn" data-no="' + no + '" data-opened="' + esc(kind) + '" href="' + esc(url) + '" target="_blank" rel="noopener" aria-label="' +
+      esc('打開' + kind + '：' + nm) + '">' + esc('打開' + kind) + '</a>';
+    var on = myJob === no + '|' + kind;
+    return '<button type="button" class="' + cls + '" data-act="myPrint" data-no="' + no + '" data-kind="' + esc(kind) + '" aria-label="' +
+      esc(label + '：' + nm) + '"' + (on ? ' aria-disabled="true"' : '') + '>' + esc(on ? '準備中，請稍等…' : label) + '</button>';
+  }
+  // 點了列印：跟雲端服務拿那一位的 PDF → 電腦叫出列印視窗（跟列印站一樣）、平板手機給新分頁打開的連結
+  function myPrint(no, kind) {
+    var d = null, k = no + '|' + kind;
+    arr(myList).forEach(function (x) { x.people.forEach(function (p) { if (Number(p['編號']) === no) d = p; }); });
+    if (!d) return;
+    if (myJob) { showMsg('上一份還在準備，請等一下。', 'warn'); return; }
+    myJob = k;
+    render();
+    api('GET', '/api/mine/packet?' + encodeURIComponent('編號') + '=' + no + '&' + encodeURIComponent('種類') + '=' + encodeURIComponent(kind),
+      null, WAIT_MS.packet, function (r) {
+        if (myJob !== k) return;   // 已經離開這一頁
+        myJob = '';
+        if (view !== 'mine') return;
+        var b = r.ok ? b64Blob(r.data.base64, 'application/pdf') : null, n = r.ok ? Number(r.data['頁數']) || 0 : 0;
+        if (!r.ok && codeRejected(r)) return;
+        if (!b) {
+          render();
+          putMsg(errHTML('myPacket', r.ok ? { code: 'internal', msg: '雲端服務回的檔案是空的。' } : r,
+            ' data-no="' + no + '" data-kind="' + esc(kind) + '"'));
+          return;
+        }
+        if (myUrls[k]) URL.revokeObjectURL(myUrls[k]);
+        myUrls[k] = URL.createObjectURL(b);
+        render();
+        if (TOUCH) { showMsg(kind + '準備好了：按「打開' + kind + '」，在新分頁用「分享」或瀏覽器選單的「列印」。', 'ok'); return; }
+        showMsg('正在叫出「' + str(d['姓名']) + '」的' + kind + (n ? '（共 ' + n + ' 頁）' : '') + '的列印視窗…', 'ok');
+        printUrl(myUrls[k]);
+      });
+  }
+
+  // ---------- 下載申請文件、信封（亞拿 11/17；DOC_DOWNLOAD 開了才有，WORD_DOWNLOAD 再加 Word） ----------
+  // 做好頁（s＝pp）、列印站（st）、我協助的學員（my）每份文件的列印按鈕下面一排「下載 PDF」「下載 Word」。
+  // 下載 PDF：做好頁本來就有那份（<a download>，就是畫面上這一份）；列印站、我協助的學員每次按都照列印那條通道重新拿
+  // （她可能回核對頁改過、換班重產了：記憶體裡的、按列印時拿的都可能是舊的）。
+  // 下載 Word：同一次按下去拿到的那份 PDF 傳給雲端 POST /api/word 轉成 docx（雲端不存）。一次只做一份；
+  // 存檔用的 blob 約 60 秒後收回（列印站整天開著不累積），離開畫面也收回
+  var DL_ON = DOC_DOWNLOAD === true, WORD_ON = DL_ON && WORD_DOWNLOAD === true;
+  var DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  var DL_KEEP_MS = 60000;   // 存檔用的 blob 留多久（下載還沒存完就收回會存失敗）
+  var DL_WORD_OFF = '雲端還沒開下載 Word，請改用下載 PDF。';   // 網頁開了 Word、雲端沒開（/api/word 404）：不能重試
+  var dlJob = '', dlSeq = 0, dlUrls = [], dlWhere = '';
+  function dlNoteHTML() {
+    return WORD_ON ? '<p class="hint dlnote">Word 檔可以在電腦上改字再印；<span class="nw">改過的內容不會存回系統。</span></p>' : '';
+  }
+  // pdfA：做好頁那顆現成的「下載 PDF」連結（列印站、我協助的學員是按了才去拿的按鈕）
+  function dlRowHTML(s, no, nm, kind, pdfA) {
+    return '<div class="dlrow">' + (pdfA || dlBtn(s, no, nm, kind, 'pdf')) + (WORD_ON ? dlBtn(s, no, nm, kind, 'word') : '') + '</div>';
+  }
+  function dlBtn(s, no, nm, kind, f) {
+    var label = f === 'word' ? '下載 Word' : '下載 PDF', on = dlJob === s + '|' + no + '|' + kind + '|' + f;
+    return '<button type="button" class="btn btn2 sm" data-act="dl" data-s="' + s + '" data-no="' + no + '" data-kind="' + esc(kind) + '" data-f="' + f + '" aria-label="' +
+      esc(label + '：' + kind + '：' + nm) + '"' + (on ? ' aria-disabled="true"' : '') + '>' + (on ? '準備中…' : label) + '</button>';
+  }
+  // 存檔的連結都收回，做到一半的不算了（換畫面、換寫手、列印站離開、我協助的學員重新整理）
+  function dlReset() {
+    dlUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+    dlUrls = []; dlJob = ''; dlSeq++;
+  }
+  function dlName(s, no) {
+    var nm = null;
+    if (s === 'pp') return view === 'screen' && state.pos === PRINT ? nameOf() : null;
+    if (s === 'st' && view === 'station') arr(stList).forEach(function (x) { if (Number(x['編號']) === no) nm = str(x['姓名']); });
+    if (s === 'my' && view === 'mine') arr(myList).forEach(function (x) { x.people.forEach(function (p) { if (Number(p['編號']) === no) nm = str(p['姓名']); }); });
+    return nm;
+  }
+  // 那一份 PDF → cb(blob)；拿不到 cb(null, r)。列印站、我協助的學員每次都重新拿（不留）
+  function dlPdf(s, no, kind, cb) {
+    if (s === 'pp') { var f = files[kind === '信封' ? 'pdf_env' : 'pdf_print']; cb(f && f.blob || null, { code: 'internal', msg: '申請文件沒有存到，要再產生一次。' }); return; }
+    api('GET', (s === 'st' ? '/api/packet?' : '/api/mine/packet?') + encodeURIComponent('編號') + '=' + no + '&' + encodeURIComponent('種類') + '=' + encodeURIComponent(kind),
+      null, WAIT_MS.packet, function (r) {
+        var b = r.ok ? b64Blob(r.data.base64, 'application/pdf') : null;
+        cb(b, r.ok ? { code: 'internal', msg: '雲端服務回的檔案是空的。' } : r);
+      });
+  }
+  function dlB64(blob, cb) {
+    try {
+      var rd = new FileReader();
+      rd.onload = function () { var s = String(rd.result || ''), i = s.indexOf(','); cb(i >= 0 ? s.slice(i + 1) : ''); };
+      rd.onerror = function () { cb(''); };
+      rd.readAsDataURL(blob);
+    } catch (e) { cb(''); }
+  }
+  // 存檔：跟做好頁的「下載 PDF」一樣用 <a download>（連結約 60 秒後才收回，免得還沒存完就收掉；離開畫面時 dlReset 也會收）
+  function dlSave(blob, name) {
+    var u = URL.createObjectURL(blob), a = document.createElement('a');
+    dlUrls.push(u);
+    setTimeout(function () {
+      var i = dlUrls.indexOf(u);
+      if (i >= 0) { dlUrls.splice(i, 1); URL.revokeObjectURL(u); }
+    }, DL_KEEP_MS);
+    a.href = u; a.download = name; a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  function dlGo(s, no, kind, f) {
+    var key = s + '|' + no + '|' + kind + '|' + f, nm = dlName(s, no), my;
+    if (nm === null || (f === 'word' && !WORD_ON)) return;
+    if (dlJob) { if (dlJob !== key) showMsg('上一份還在準備，請等一下。', 'warn'); return; }
+    if (s === 'st' && Date.now() - stChanged < ST_GUARD) { showMsg('名單剛剛更新了，請再看一次名字，再按一次。', 'warn'); return; }
+    var base = kind + '_' + (nm || '學員'), attrs = ' data-s="' + s + '" data-no="' + no + '" data-kind="' + esc(kind) + '" data-f="' + f + '"';
+    function end() { if (my !== dlSeq) return false; dlJob = ''; render(); return true; }   // 還在同一個畫面：按鈕變回來
+    // 存檔：列印站、我協助的學員那個人已經不在名單上（名單在等的時候更新了）就不存
+    function save(b, ext) {
+      if (!end()) return;
+      if (s !== 'pp' && dlName(s, no) === null) { showMsg('「' + nm + '」已經不在名單上，沒有下載。', 'warn'); return; }
+      dlSave(b, base + ext);
+    }
+    function fail(step, r) {
+      if (!end()) return;
+      if (!r.ok && (codeRejected(r) || (s === 'st' && stDeny(r)))) return;
+      putMsg(errHTML(step, r, attrs));
+    }
+    my = ++dlSeq;
+    dlJob = key;
+    render();
+    dlPdf(s, no, kind, function (b, r) {
+      if (my !== dlSeq) return;
+      if (!b) { fail('dl', r); return; }
+      if (f === 'pdf') { save(b, '.pdf'); return; }
+      dlB64(b, function (b64) {
+        if (my !== dlSeq) return;
+        if (!b64) { fail('word', { code: 'internal', msg: '這份 PDF 讀不出來。' }); return; }
+        api('POST', '/api/word', JSON.stringify({ pdf: b64 }), WAIT_MS.word, function (r) {
+          if (my !== dlSeq) return;
+          var w = r.ok ? b64Blob(r.data.base64, str(r.data.mime) || DOCX) : null;
+          if (!r.ok && r.status === 404) { fail('word', { code: 'word_off', msg: DL_WORD_OFF }); return; }   // 雲端沒開下載 Word：不給「再試一次」
+          if (!w) { fail('word', r.ok ? { code: 'internal', msg: '雲端服務回的檔案是空的。' } : r); return; }
+          save(w, '.docx');
+        });
+      });
+    });
+  }
+
   // ---------- 換畫面 ----------
   function render() {
     var h;
     followKey = null;
+    var where = view === 'screen' ? (state.pos === PRINT ? 'print' : 'form') : view;   // 下載：離開畫面就收回拿過的 PDF、存檔連結
+    if (where !== dlWhere) { if (dlWhere) dlReset(); dlWhere = where; }
     if (view === 'code') h = codeHTML();
     else if (view === 'wait') h = waitHTML();
     else if (view === 'station') h = stationHTML();
+    else if (view === 'mine') h = mineHTML();                                         // 我協助的學員（KNOWN 202）
     else if (view === 'gqr') h = gQrHTML();                                           // 多人一起報名（10/22）：店裡電腦的 QR
     else if (view === 'gsend') h = gSendingHTML();                                    // 手機：送出中
     else if (G_TOKEN && (state.g || gBad)) h = state.g ? gDoneHTML() : gBadHTML();    // 手機：你是第 N 號／這張 QR 不能用
@@ -2668,8 +3197,8 @@ p.cn{margin:6px 0 2px}
     notice = '';
     flash = '';
     jobNote = '';
-    app.className = 'wrap' + ((view === 'screen' && state.pos >= REVIEW) || view === 'station' ? ' wide' : '');
-    app.innerHTML = (API ? '' : '<p class="tm" role="note">測試模式：沒有連雲端服務，資料不會送出</p>') + h;
+    app.className = 'wrap' + ((view === 'screen' && state.pos >= REVIEW) || view === 'station' || view === 'mine' ? ' wide' : '');
+    app.innerHTML = (API ? '' : '<p class="tm" role="note">測試模式：沒有連雲端服務，資料不會送出</p>') + writerBarHTML() + h;
     shownAt = Date.now();
     var q = curQ();
     if (q) { updateFollow(q); updateNext(q, true); }
@@ -2764,7 +3293,7 @@ p.cn{margin:6px 0 2px}
     if (q.type === 'photo') return '清楚，下一步';
     if (q.type === 'batch') return '下一步：確認資料';
     if (q.type === 'multi') return selOf(q).length ? '選好了，下一題' : '跳過這題';
-    if (q.type === 'text' && !q.req) return textOf(q) ? '下一題' : '跳過這題';
+    if (q.type === 'text' && !q.req && !q.keepNext) return textOf(q) ? '下一題' : '跳過這題';
     return '下一題';
   }
 
@@ -2890,7 +3419,7 @@ p.cn{margin:6px 0 2px}
     if (state.fill && state.pos >= 1 && state.pos <= SUBMIT) { go(prevFill(state.pos)); return; }   // 載進來的：只退回電腦上要補的題，第一題再退＝回名單
     go(step(state.pos - 1, -1));   // 條件題沒問的跳過
   }
-  // 載進來的（一起報名）：p 之前、電腦上要補的那一題；沒有＝0（開場頁的名單）。她手機上答過的不退回去，要改到確認頁按「改」（Tomi 10/23）
+  // 載進來的（一起報名）：p 之前、電腦上要補的那一題；沒有＝0（開場頁的名單）。她手機上答過的不退回去，要改到確認頁按「改」（主辦 10/23）
   function prevFill(p) {
     for (var i = Math.min(p - 1, N); i >= 1; i--) if (state.fillQs.indexOf(QS[i - 1].id) >= 0 && shown(QS[i - 1])) return i;
     return 0;
@@ -3040,7 +3569,7 @@ p.cn{margin:6px 0 2px}
     api('GET', path, null, WAIT_MS.batches, function (r) {
       if (my !== batchSeq) return;
       batchLoading = false;
-      if (r.ok) { gotBatches(arr(r.data['梯次'])); return; }
+      if (r.ok) { if (noteWriter(r)) paintWriterBar(); gotBatches(arr(r.data['梯次'])); return; }
       var q = curQ();
       if (q && q.type === 'batch' && codeRejected(r)) return;
       batches = null;
@@ -3079,10 +3608,11 @@ p.cn{margin:6px 0 2px}
     var b = arr(batches)[i];
     if (!b || b['狀態'] !== '開放報名') return;
     state.batch = snap(b);
+    delete state.rg;   // 分區（KNOWN 199）：選好了就不記按的區，回來時先列選好的那一梯那一區
     batchGone = '';
     save();
-    var els = app.querySelectorAll('.opt[data-act="batch"]');
-    for (var k = 0; k < els.length; k++) els[k].setAttribute('aria-checked', k === i ? 'true' : 'false');
+    var els = app.querySelectorAll('.opt[data-act="batch"]');   // 分區時畫面上只有一部分梯次：照 data-i 對（KNOWN 199）
+    for (var k = 0; k < els.length; k++) els[k].setAttribute('aria-checked', Number(els[k].getAttribute('data-i')) === i ? 'true' : 'false');
     hideMsg();
     busy = true;   // 讓她看到勾勾再往下
     setTimeout(function () { busy = false; advance(); }, 350);
@@ -3458,12 +3988,12 @@ p.cn{margin:6px 0 2px}
       '<p class="lead" role="status">請稍等，<span class="nw">不要關掉這個畫面。</span></p>' +
       (gTries > 1 ? '<p class="hint">一起送出的人比較多，<span class="nw">正在排隊，會自動再送。</span></p>' : '');
   }
-  function seq2(n) { return n > 0 && n < 10 ? '0' + n : String(n); }   // 序號兩位數：01、02…（Tomi 10/23；手機和電腦名單一樣）
+  function seq2(n) { return n > 0 && n < 10 ? '0' + n : String(n); }   // 序號兩位數：01、02…（主辦 10/23；手機和電腦名單一樣）
   function gDoneHTML() {
     var g = state.g;
-    return '<div class="gdone">' + (g.name ? '<p class="gname">' + esc(g.name) + '</p>' : '') +   // 序號上面放她的名字（Tomi 10/23）
+    return '<div class="gdone">' + (g.name ? '<p class="gname">' + esc(g.name) + '</p>' : '') +   // 序號上面放她的名字（主辦 10/23）
       '<p class="gno">你的序號<b>' + esc(seq2(g.no)) + '</b></p>' +
-      '<p class="lead">請依序號，<span class="nw">繼續下面的申請流程。</span></p></div>';   // 只給序號＋一句；放畫面正中間（Tomi 10/23）
+      '<p class="lead">請依序號，<span class="nw">繼續下面的申請流程。</span></p></div>';   // 只給序號＋一句；放畫面正中間（主辦 10/23）
   }
   // 送給雲端存的答案（店裡電腦載入時原樣放回去）：只有手機上問的題目（含「其他」寫的字）
   function gAnswers() {
@@ -3648,7 +4178,7 @@ p.cn{margin:6px 0 2px}
     });
     if (b['狀態'] === '開放報名') state.batch = snap(b);   // 那一梯還能報：不用再選
     state.fill = true;
-    state.fillQs = QS.filter(gapOf).map(function (q) { return q.id; });   // 電腦上只補這幾題；上一題也只在這幾題之間（Tomi 10/23）
+    state.fillQs = QS.filter(gapOf).map(function (q) { return q.id; });   // 電腦上只補這幾題；上一題也只在這幾題之間（主辦 10/23）
     state.fillNo = no; state.fillName = str(d['姓名']); state.fillRid = rid || 0;
     view = 'screen'; confirmChecked = false; working = ''; docsLost = 0; pdfLost = false;
     batches = null; batchErr = null; batchGone = '';
@@ -3658,7 +4188,7 @@ p.cn{margin:6px 0 2px}
   }
 
   // ---- 店裡電腦：開場頁「台中 LINE 報名、還沒做的」（11/14，規格 15-4）----
-  // 台中學員在 LINE 填了第一階段資料，Tomi 打完電話、她到店裡：點她 → 她在 LINE 答過的題目帶進來（點選題照 LINE 資料表的字、
+  // 台中學員在 LINE 填了第一階段資料，主辦打完電話、她到店裡：點她 → 她在 LINE 答過的題目帶進來（點選題照 LINE 資料表的字、
   // 打字題放回答案），只問還沒答的（身分證、地址、勞保、梯次…；核對頁工作卡照舊）；產生時帶 LINE報名，雲端把那一筆標文件已產出。
   // 只認店裡的通關碼（/api/line/list、/api/line/load）；做法比照上面「今天在手機上填好的人」。
   // 後台明細「開始做申請文件」打開的（#line=<id>，11/14 第二階段）：開場頁畫好、有通關碼就載入她（lineWant，一次）；這台電腦上有別人
@@ -3773,6 +4303,7 @@ p.cn{margin:6px 0 2px}
     gq.err = null;
     gq.batches = null;
     api('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
+      if (r.ok) noteWriter(r);   // 寫手（KNOWN 182）：一樣記下是哪位寫手
       if (view !== 'gqr') return;
       if (!r.ok) { if (codeRejected(r)) return; gq.err = r; render(); return; }
       var t = todayTW();
@@ -3814,11 +4345,16 @@ p.cn{margin:6px 0 2px}
       else if (!gq.batches) h += '<div class="box warn" role="status"><p>正在讀取梯次，請稍等…</p></div>';
       else if (!gq.batches.length) h += '<div class="box err"><p>目前沒有開放報名的梯次。</p></div>';
       else if (gq.busy) h += '<div class="box warn" role="status"><p>正在產生 QR code，請稍等…</p></div>';
-      else h += '<div class="opts">' + gq.batches.map(function (b, i) {
-        return '<button type="button" class="opt bt" data-act="gPick" data-i="' + i + '"><span class="t">' +
-          '<span class="b1"><span>' + esc(str(b['梯次'])) + '</span> <span>' + esc(str(b['上課時間'])) + '</span></span>' +
-          '<span class="b2">地點：' + esc(b['上課地點'] || '（未定）') + '</span></span></button>';
-      }).join('') + '</div>';
+      else {   // 分區（KNOWN 199）：這時還沒有學員、不知道住哪一區 → 先選全部，寫手按了才換（gq.rg）
+        var tabs = BATCH_REGIONS === true ? regionTabs(gq.batches) : null;
+        var at = tabs && (gq.rg === 'all' || tabs.some(function (x) { return x.r === gq.rg; })) ? gq.rg : 'all';
+        if (tabs) h += regionTabsHTML(tabs, at, 'gRg') + (at === 'all' ? '<p class="hint rgh">先列全部梯次；要只看一區，按上面。</p>' : '');
+        h += '<div class="opts">' + gq.batches.map(function (b, i) {
+          return !inRegion(b, at) ? '' : '<button type="button" class="opt bt" data-act="gPick" data-i="' + i + '"><span class="t">' +
+            '<span class="b1">' + titleSpans(str(b['梯次'])) + ' <span>' + esc(str(b['上課時間'])) + '</span></span>' +
+            '<span class="b2">地點：' + esc(b['上課地點'] || '（未定）') + '</span>' + ownerLine(b) + '</span></button>';
+        }).join('') + '</div>';
+      }
     }
     return h + '<div class="foot"><button type="button" class="linkbtn" data-act="gExit">回報名畫面</button></div>';
   }
@@ -3856,6 +4392,7 @@ p.cn{margin:6px 0 2px}
     else if (act === 'gQr') gQrOpen();
     else if (act === 'gQrBatches') { gQrBatches(); render(); }
     else if (act === 'gPick') gQrMake(Number(el.getAttribute('data-i')));
+    else if (act === 'gRg') { gq.rg = el.getAttribute('data-r'); render(); }   // QR 梯次清單的區按鈕（KNOWN 199）
     else if (act === 'gCopy') gCopy();
     else if (act === 'gExit') { view = 'screen'; render(); try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ } }
   }
@@ -3919,7 +4456,7 @@ p.cn{margin:6px 0 2px}
     return null;
   }
   var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, edit: 1, batch: 1, gen: 1, codeOk: 1, endAsk: 1, nextAsk: 1, reeditAsk: 1,
-    station: 1, stPrint: 1, retry: 1, noLabor: 1, noId: 1, useId: 1, redo: 1 };
+    station: 1, stPrint: 1, stMine: 1, retry: 1, noLabor: 1, noId: 1, useId: 1, redo: 1, mine: 1, myPrint: 1, dl: 1 };
 
   app.addEventListener('click', function (e) {
     var el = actEl(e.target);
@@ -3940,10 +4477,12 @@ p.cn{margin:6px 0 2px}
       case 'noId': onNoId(); break;
       case 'useId': onUseId(); break;
       case 'batch': onBatch(Number(el.getAttribute('data-i'))); break;
+      case 'batchRg': state.rg = el.getAttribute('data-r'); keepRegion(state.rg); save(); render(); break;   // 選梯次的區按鈕（KNOWN 199）
       case 'reloadBatches': loadBatches(); render(); break;
       case 'code': askCode('change'); break;
       case 'codeOk': onCodeOk(); break;
       case 'codeCancel': view = codeBack; render(); break;
+      case 'writerSwitch': switchWriter(); break;
       case 'gen': onGen(); break;
       case 'pick': onPick(el.getAttribute('data-k'), Number(el.getAttribute('data-i'))); break;
       case 'open': onOpen(el.getAttribute('data-k')); break;
@@ -3983,6 +4522,12 @@ p.cn{margin:6px 0 2px}
       case 'stReload': stWake(true); break;
       case 'stPrint': stPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind')); break;
       case 'stExit': closeStation(); break;
+      case 'stMine': stStop(); openMine(); break;   // 列印站只認店裡的碼（KNOWN 204）：寫手改去「我協助的學員」
+      case 'mine': openMine(); break;                // 我協助的學員（KNOWN 202）
+      case 'myReload': myLoad(); break;
+      case 'myPrint': myPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind')); break;
+      case 'myExit': closeMine(); break;
+      case 'dl': dlGo(el.getAttribute('data-s'), Number(el.getAttribute('data-no')), el.getAttribute('data-kind'), el.getAttribute('data-f')); break;   // 下載 PDF／Word
       default: gAct(act, el);   // 多人一起報名（10/22）的按鈕：g 開頭
     }
   });
@@ -4085,6 +4630,7 @@ p.cn{margin:6px 0 2px}
     try { location.replace(location.pathname + (location.search ? location.search + '&' : '?') + 'openExternalBrowser=1' + location.hash); return; } catch (e) { /* 照常開 */ }
   }
   loadCode();
+  loadWriter();
   var saved = load();
   OLD_KEYS.forEach(function (k) { try { window.localStorage.removeItem(k); } catch (e) { /* 略過 */ } });
   if (saved) state = saved;
@@ -4117,6 +4663,7 @@ p.cn{margin:6px 0 2px}
   }
   if (atStation()) openStation();          // 列印站的書籤：做到一半的報名等離開列印站再接
   else begin();
+  refreshWriter();                         // 別家的網頁：背景問一次是哪位寫手（不給公司發布的那一份不問）
 })();
 </script>
 </body>

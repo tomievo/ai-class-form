@@ -13,6 +13,9 @@
 // 雲端服務網址（跟 index.html 同一個；結尾不要加斜線）。留空字串＝測試模式：不連網、錄音不會送出（名字、梯次、名單用範例）。
 // 本機測試：開 測試資料/假雲端服務.py、測試資料/網頁測試伺服器.py（會複製一份、把複本的網址改成假雲端）；正本一律保持正式網址
 var SERVICE_URL = 'https://gov-subsidy-450277428146.asia-east1.run.app';
+// 瀏覽器儲存的名字空間（跟 index.html 同一條）：空字串＝不給公司發布的那一家（鍵名、資料庫名跟以前一字不差）；
+// 發布.py 發別家時把這一行換成那一家的代號，每個鍵、資料庫名後面加「.<代號>」
+var STORAGE_NS = '';
 </script>
 <!--
   心得錄音網頁（2026-10-17；規格：docs/規格_現場報名雲端版.md 第 12 節）
@@ -146,9 +149,12 @@ h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
   'use strict';
 
   var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
-  var CODE_KEY = 'gov_subsidy.voice.store_code';   // 現場人員的手機記住店裡的通關碼（跟報名網頁分開記，不動它記的那個）
-  var BATCH_KEY = 'gov_subsidy.voice.batch';       // 現場人員上次選的梯次：下次打開直接到那一梯的名單
-  var DB_NAME = 'gov_subsidy.voice', DB_STORE = 'clips';   // IndexedDB：還沒傳上去的錄音（傳好、雲端存好了才刪）
+  // 所有 localStorage 鍵、IndexedDB 名字都要經過 nsKey（STORAGE_NS 空的＝原樣；別家＝後面加 .<代號>）
+  var NS = typeof STORAGE_NS === 'string' && STORAGE_NS ? '.' + STORAGE_NS : '';
+  function nsKey(k) { return k + NS; }
+  var CODE_KEY = nsKey('gov_subsidy.voice.store_code');   // 現場人員的手機記住店裡的通關碼（跟報名網頁分開記，不動它記的那個）
+  var BATCH_KEY = nsKey('gov_subsidy.voice.batch');       // 現場人員上次選的梯次：下次打開直接到那一梯的名單
+  var DB_NAME = nsKey('gov_subsidy.voice'), DB_STORE = 'clips';   // IndexedDB：還沒傳上去的錄音（傳好、雲端存好了才刪）
   var STAFF_HASH = '現場';
   var MAX_SEC = 300, SOON_SEC = 30, MIN_SEC = 1.5;  // 一段最長 5 分鐘（自動停）；剩 30 秒開始提醒；不到 1.5 秒當作沒講
   var WAIT_MS = { who: 45000, clip: 240000, batches: 45000, cls: 90000,     // 最多等多久，超過當沒成功（轉文字最久約 3 分鐘）
