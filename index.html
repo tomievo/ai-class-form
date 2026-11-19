@@ -24,8 +24,7 @@ var ASK_INTRODUCER = false;
 // 選梯次照區分開（KNOWN 199，主辦 11/17；公司設定 報名網頁.梯次分區）：false＝不分、照舊整排列出來（正本、沒開的那一家）；
 // 發布.py 發給開了的那一家時把這一行換成 true（最上面一排區按鈕，先選她通訊地址那一區）
 var BATCH_REGIONS = false;
-// 通訊地址不在上課地點那個分署的轄區（KNOWN 199，主辦 11/17；公司設定 報名網頁.地址不在轄區只提醒）：false＝紅字擋到改好才能產生
-// （KNOWN 167；正本、沒開的那一家）；true＝只黃字提醒、照樣能產生（寫手決定要不要繼續）。發布.py 發給開了的那一家時換成 true
+// 舊發布設定保留相容；兩家公司都依通訊地址選文件，不再用此開關擋跨區（11/19）。
 var AREA_WARN_ONLY = false;
 // 申請文件、信封的下載按鈕（亞拿 11/17；公司設定 報名網頁.文件下載）：false＝做好頁照舊、列印站和我協助的學員沒有下載（正本、沒開的那一家）；
 // 發布.py 發給開了的那一家時把這一行換成 true（做好頁、列印站、我協助的學員每份文件的列印按鈕下面多一排「下載 PDF」）
@@ -207,8 +206,9 @@ textarea.inp{resize:vertical}
 .tags,.ftxt{grid-column:2}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
 .ftxt{margin:0;font-size:20px;font-weight:800;color:var(--err)}
-.areat{margin:-4px 0 10px calc(4.6em + 10px);font-size:20px;font-weight:800;color:var(--err)}   /* 通訊地址不在上課地點那個分署的轄區（KNOWN 167） */
-.areaw{margin:-4px 0 10px;padding:6px 10px;border:3px solid var(--warn);border-radius:10px;background:var(--warn-bg);color:var(--ink);font-size:20px;font-weight:800}   /* 同上，只提醒、不擋的那一家（KNOWN 199）：黃框整列寬 */
+.areat{margin:-4px 0 10px calc(4.6em + 10px);font-size:20px;font-weight:800;color:var(--err)}   /* 地址認不出縣市：請補正才能選對文件 */
+.areainfo{margin:4px 0 14px;padding:10px 12px;border:2px solid var(--pri);border-radius:10px;color:var(--pri-dk);font-size:20px;font-weight:700;overflow-wrap:anywhere}
+.areainfo p{margin:0 0 4px}.areainfo p:last-child{margin-bottom:0}
 .two{display:grid;grid-template-columns:minmax(0,1fr);gap:0 18px}
 @media (min-width:600px){.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .idth{display:flex;gap:12px;margin:8px 0}
@@ -734,6 +734,12 @@ p.cn{margin:6px 0 2px}
       if (Number(d.rid) > 0 && d.read && typeof d.read === 'object' && d.fix && typeof d.fix === 'object') {
         s.rid = Number(d.rid); s.read = d.read; s.fix = fixShape(d.fix); s.sheet = str(d.sheet);
         if (d.jd && typeof d.jd === 'object' && !isArr(d.jd)) s.jd = d.jd;
+        // 舊存檔的手改是照課地做的；換了受理分署不能當成新版本的手改。
+        var office = officeOf(s.fix['通訊地址']), oldOffice = s.fix['切結分署'] || officeOf(obj(s.batch)['上課地點']);
+        if (oldOffice !== office) { s.fix['切結改'] = {}; s.fix['基本資料']['她看過都對'] = false; s.fix['地址待判讀'] = true; }
+        var judged = obj(s.jd || obj(s.read)['判讀']);
+        if (judged['受理分署'] !== office || nows(judged['通訊地址']) !== nows(s.fix['通訊地址'])) s.fix['基本資料']['她看過都對'] = false;
+        s.fix['切結分署'] = office;
         s.need = d.need === true;
       } else s.pos = SUBMIT;
     }
@@ -1379,7 +1385,7 @@ p.cn{margin:6px 0 2px}
     return str(b['開班']) ? '<span class="b2">開班：' + esc(str(b['開班'])) + '</span>' : '';
   }
   // 選梯次照區分開（KNOWN 199，主辦 11/17；只有 BATCH_REGIONS 是 true 的那一家）：梯次上面一排區按鈕，下面只列那一區的梯次。
-  // 區＝分署（OFFICE_COUNTIES，跟轄區檢查、切結書預覽同一條 officeOf）：照上課地點的縣市分，認不出縣市的梯次只在「全部」。
+  // 區＝分署（OFFICE_COUNTIES，跟受理分署、切結書預覽同一條 officeOf）：照上課地點的縣市分，認不出縣市的梯次只在「全部」。
   // 按鈕：有梯次的區才有（北到南），字寫那一區有梯次的縣市（例「高雄・屏東」），最後「全部」；梯次都在同一組（每個按鈕列的都一樣）就不畫。
   // 先選哪一個（regionAt）：這位學員寫手按過的（state.rg）→ 選好的梯次那一區（回來改時看得到選的那一梯）→ 她通訊地址那一區
   // （那一區有開放報名的梯次才算）→ 全部。多人一起報名產 QR 那時還沒有學員、沒有地址：先選全部（gq.rg 記寫手按的）
@@ -1561,6 +1567,8 @@ p.cn{margin:6px 0 2px}
     f['最後工作'] = (j['來源'] === '勞保' && str(j['鍵'])) || j['來源'] === '新增' ? { '來源': j['來源'], '鍵': str(j['鍵']), '單位': str(j['單位']),
       '自己開的店': own === true || own === false ? own : null, '店後來': afterOk(j['店後來']) ? j['店後來'] : '',
       '職稱': str(j['職稱']), '工作內容': str(j['工作內容']), '公保軍保': gov === true || gov === false ? gov : null } : null;
+    f['切結分署'] = str(f['切結分署']);
+    f['地址待判讀'] = f['地址待判讀'] === true;   // 存檔也記：地址換回去仍須重新判讀，不能復活已清掉的手改預覽
     f['切結改'] = pvShape(f['切結改']);   // 11/08：切結書每一行現場改的（KNOWN 169）
     return f;
   }
@@ -1579,7 +1587,7 @@ p.cn{margin:6px 0 2px}
     var id = obj(rd['身分證']), j = obj(rd['判讀']);
     return fixShape({ '姓名': sugOf(j, id, '姓名'), '身分證字號': sugOf(j, id, '身分證字號'), '出生日期': sugOf(j, id, '出生日期'),
       '戶籍地址': str(id['戶籍地址']), '通訊地址': str(j['通訊地址']), '郵遞區號': str(j['郵遞區號']), '最後公司職稱': str(lastCo(j)['職稱']),
-      '未投保工作': ngOf(j['未投保工作']), '勞保': JSON.parse(JSON.stringify(obj(rd['勞保']))) });
+      '未投保工作': ngOf(j['未投保工作']), '切結分署': officeOf(j['通訊地址']), '勞保': JSON.parse(JSON.stringify(obj(rd['勞保']))) });
   }
   // 欄位路徑：姓名、身分證字號、出生日期、戶籍地址、通訊地址、郵遞區號；lh.<欄>＝勞保表頭；md.<列>.<欄>＝勞保明細；
   // nb.<列>.<欄>＝農保明細；lastTitle＝舊雲端的職稱；ng.<欄>＝新增的那份（沒保勞保：機構、起、迄；舊雲端還有職稱）；
@@ -1613,7 +1621,7 @@ p.cn{margin:6px 0 2px}
     return str(f[p[0]]);
   }
   function setFix(path, v) {
-    var f = state.fix, p = path.split('.'), L, w = selJob();
+    var f = state.fix, p = path.split('.'), L, w = selJob(), before = str(f['通訊地址']);
     if (p[0] === 'lh') f['勞保']['表頭'][p[1]] = v;
     else if (p[0] === 'md') { if (f['勞保']['明細'][+p[1]]) f['勞保']['明細'][+p[1]][p[2]] = v; }
     else if (p[0] === 'nb') { if (f['勞保']['農保明細'][+p[1]]) f['勞保']['農保明細'][+p[1]][p[2]] = v; }
@@ -1626,6 +1634,18 @@ p.cn{margin:6px 0 2px}
     else if (p[0] === 'ans') state.a[p[1]] = v;
     else if (p[0] === 'pv') { if (!PV()[p[1]] || PV()[p[1]]['勾'] !== '勾') PV()[p[1]] = pvMake(p[1], '勾'); PV()[p[1]][p[2]] = v; }   // 打字＝這一行勾、照打的印
     else f[p[0]] = v;
+    if (p[0] === 'pv') f['切結分署'] = addressOffice();
+    if (path === '通訊地址' && nows(before) !== nows(v)) {
+      jdSeq++;   // 連 debounce 還沒到的這段，也不能接回舊地址的判讀。
+      f['郵遞區號'] = '';
+      f['地址待判讀'] = true;
+      if (officeOf(before) !== addressOffice()) {
+        f['切結改'] = {}; pvOpen = ''; pvToDate = false; pvLate = false;
+      }
+      f['切結分署'] = addressOffice();
+      unsee('通訊地址改了，請等文件更新後，再請她看一次、唸一次。');
+      seenPv = '';
+    }
   }
   function normFix(path, v) {
     var k = path.split('.').pop();
@@ -1761,51 +1781,48 @@ p.cn{margin:6px 0 2px}
       fixField('郵遞區號', '郵遞區號', { im: 'numeric', ph: '通訊地址的，例 820' }) +   // 郵遞區號空白不擋：申請表那格留白手寫
       fixField('ans.email', 'Email', { im: 'email', ph: '申請表要印，請跟她核對' }) + '</div>';   // 10/22：打錯直接改，不用回確認頁
   }
-  // ---------- 通訊地址要在上課地點那個分署的轄區（KNOWN 167：規則 9「只提醒、不擋」的例外） ----------
-  // 高屏澎東的梯次 → 通訊地址要在高雄、屏東、澎湖、台東（主辦 2026-11-06）；雲嘉南的梯次 → 要在雲林、嘉義、台南（主辦 2026-11-08：
-  // 「要，一起做」）。通訊地址在別的分署，這邊會轉過去、那邊要她重補資料，審不完就上不了這一梯 → 擋到改成親友、娘家能收信的地址才能產生。
-  // 縣市怎麼認跟雲端 app.py 收件分署()、後台 cohort-model.js branchOffice 同一條：寫了「縣市名＋市或縣」、臺當台，只認得到一個分署才算。
-  // 認不出縣市的梯次不檢查；通訊地址認不出縣市（沒寫縣市）也擋，請她寫到縣市。同身分證地址的，讀取時雲端已把戶籍地址填進這一格
-  // 中彰投（台中、彰化、南投，2026-11-13 台中合辦）：認得分署（切結書預覽照台中版）；轄區檢查只做 AREA_MSG 有的分署（中彰投 11/13 主辦說要）
-  // 11/17（KNOWN 199，主辦：「只要跳警示就好，寫手要不要繼續往下申請，就是寫手的權限」）：AREA_WARN_ONLY 是 true 的那一家不擋，
-  // 同一條認法改成黃字提醒（areaWarnMsg：講她的縣市、這一梯的分署、可能會被轉到別的分署審），照樣能產生
-  // 北基宜花金馬（台北、新北、基隆、宜蘭、花蓮、金門、連江，2026-11-17）：切結書預覽、迄日預設照高雄版（整套跟高屏澎東一樣），轄區照樣擋
-  // 桃竹苗（桃園、新竹市／縣、苗栗，2026-11-17）：切結書預覽照桃竹苗的無工作切結書（工會兩格、非負責人、兩條知悉），迄日預設留白，轄區照樣擋
+  // 通訊地址決定受理分署、文件及信封；上課地點只用於梯次分組（11/19，兩家公司共用）。
+  // 只認完整縣市名稱，認不出或跨兩個分署時請補正地址，不能改用課地。
   var OFFICE_COUNTIES = { '高屏澎東': ['高雄', '屏東', '澎湖', '台東'], '雲嘉南': ['雲林', '嘉義', '台南'], '中彰投': ['台中', '彰化', '南投'],
     '北基宜花金馬': ['台北', '新北', '基隆', '宜蘭', '花蓮', '金門', '連江'], '桃竹苗': ['桃園', '新竹', '苗栗'] };
   function officeOf(place) {
-    var all = [], seen = {}, re = /(高雄|屏東|澎湖|台東|雲林|嘉義|台南|台中|彰化|南投|台北|新北|基隆|宜蘭|花蓮|金門|連江|桃園|新竹|苗栗)[市縣]/g, m, t = str(place).replace(/臺/g, '台');
+    var all = [], seen = {}, re = /(高雄|屏東|澎湖|台東|雲林|嘉義|台南|台中|彰化|南投|台北|新北|基隆|宜蘭|花蓮|金門|連江|桃園|新竹|苗栗)[市縣]/g, m, t = str(place).replace(/[\s\ufeff]/g, '').replace(/臺/g, '台');
     while ((m = re.exec(t))) Object.keys(OFFICE_COUNTIES).forEach(function (o) { if (OFFICE_COUNTIES[o].indexOf(m[1]) >= 0 && !seen[o]) { seen[o] = 1; all.push(o); } });
     return all.length === 1 ? all[0] : '';
   }
-  function classOffice() { return state.batch ? officeOf(state.batch['上課地點']) : ''; }   // 這一梯的分署；認不出＝''
-  // 地址裡寫到的縣市（全台；臺當台）：同一個縣市名只算一次、留第一次的寫法（臺東縣臺東市＝台東縣）。雲端 app.寫的縣市 同一條。
+  function addressOffice() { return officeOf(obj(state.fix)['通訊地址']); }
+  function previewCurrent() {
+    var j = J(), office = addressOffice();
+    return !!office && !obj(state.fix)['地址待判讀'] && j['受理分署'] === office && nows(j['通訊地址']) === nows(obj(state.fix)['通訊地址']);
+  }
+  function previewWait() { return !addressOffice() ? areaMsg() : '正在按通訊地址更新切結書，請等更新後再唸給她聽。'; }
+  function syncPostal(j) {
+    if (nows(j['通訊地址']) !== nows(state.fix['通訊地址']) || typeof j['郵遞區號'] !== 'string') return;
+    state.fix['郵遞區號'] = j['郵遞區號'];
+    if (j['受理分署'] === addressOffice()) state.fix['地址待判讀'] = false;
+    var field = document.getElementById('x_郵遞區號');
+    if (field) field.value = state.fix['郵遞區號'];
+    paintFix('郵遞區號');
+  }
+  // 地址裡寫到的縣市（全台；臺當台）：同一個縣市名只算一次、留第一次的寫法（臺東縣臺東市＝台東縣）。只給選梯次的地區說明使用。
   // 只用在提醒、選梯次的說明講「在哪個縣市」；認分署照舊用 officeOf
   function countiesOf(place) {
-    var out = [], seen = {}, re = /(台北|新北|基隆|桃園|新竹|苗栗|台中|彰化|南投|雲林|嘉義|台南|高雄|屏東|宜蘭|花蓮|台東|澎湖|金門|連江)[市縣]/g, m, t = str(place).replace(/臺/g, '台');
+    var out = [], seen = {}, re = /(台北|新北|基隆|桃園|新竹|苗栗|台中|彰化|南投|雲林|嘉義|台南|高雄|屏東|宜蘭|花蓮|台東|澎湖|金門|連江)[市縣]/g, m, t = str(place).replace(/[\s\ufeff]/g, '').replace(/臺/g, '台');
     while ((m = re.exec(t))) if (!seen[m[1]]) { seen[m[1]] = 1; out.push(m[0]); }
     return out;
   }
-  // 通訊地址不在這一梯的分署轄區（梯次認不出縣市、通訊地址空白不算）：沒開只提醒的那一家擋（areaBad），開了的只畫黃字（areaHTML）
-  function areaOff() {
-    var o = classOffice();
-    return !!AREA_MSG[o] && !!clean(state.fix['通訊地址']) && officeOf(state.fix['通訊地址']) !== o;
+  function areaBad() { return !addressOffice(); }
+  function areaMsg() { return '請把通訊地址的縣市寫清楚，才能選對申請書、切結書和收件單位。'; }
+  function areaHTML() {
+    var office = addressOffice();
+    if (!office) return '<p class="areat">' + esc(areaMsg()) + '</p>';
+    var common = office === '北基宜花金馬' ? '北基宜花金馬（共用高屏版）' : office + '版';
+    var form = office === '桃竹苗' || office === '雲嘉南' ? '全國版（' + office + '適用）' : common;
+    var affidavit = office === '雲嘉南' ? '雲嘉南 V4' : common;
+    var j = J(), receiver = str(j['通訊地址']) === str(state.fix['通訊地址']) && j['受理分署'] === office ? str(j['收件單位']) : '';
+    return '<div class="areainfo"><p>受理分署：' + esc(office) + '分署</p><p>申請書：' + esc(form) +
+      '</p><p>切結書：' + esc(affidavit) + '</p><p>信封收件：' + esc(receiver || '確認地址後更新') + '</p></div>';
   }
-  function areaBad() { return areaOff() && AREA_WARN_ONLY !== true; }
-  var AREA_MSG = {
-    '高屏澎東': '她在高雄上課，通訊地址要在高雄、屏東、澎湖、台東：請問她親友、娘家能收信的地址，改好才能產生。',
-    '雲嘉南': '她在台南上課，通訊地址要在雲林、嘉義、台南：請問她親友、娘家能收信的地址，改好才能產生。',
-    '中彰投': '她在台中上課，通訊地址要在台中、彰化、南投：請問她親友、娘家能收信的地址，改好才能產生。',   // 主辦 2026-11-13「要，跟高雄台南一樣」
-    '北基宜花金馬': '她在台北上課，通訊地址要在台北、新北、基隆、宜蘭、花蓮、金門、連江：請問她親友、娘家能收信的地址，改好才能產生。',
-    '桃竹苗': '她在桃園上課，通訊地址要在桃園、新竹、苗栗：請問她親友、娘家能收信的地址，改好才能產生。'
-  };
-  function areaMsg() { return AREA_MSG[classOffice()] || ''; }
-  function areaWarnMsg() {   // 只提醒的那一家的黃字（雲端判讀那一條：app.轄區提醒句）
-    var o = classOffice(), cs = countiesOf(state.fix['通訊地址']);
-    return '她的通訊地址' + (cs.length === 1 ? '在' + cs[0] + '，不在' : (cs.length ? '寫了' + cs.join('、') : '看不出縣市') + '，不確定在不在') +
-      '這一梯的分署轄區（' + o + '：' + OFFICE_COUNTIES[o].join('、') + '）。申請可能會被轉到別的分署審，要繼續照樣能產生。';
-  }
-  function areaHTML() { return !areaOff() ? '' : AREA_WARN_ONLY === true ? '<p class="areaw">！ ' + esc(areaWarnMsg()) + '</p>' : '<p class="areat">✘ ' + esc(areaMsg()) + '</p>'; }
   // 打字時：大字的值、哪個按鈕是選的，跟著變（不整頁重畫，游標才不會跑掉）
   function paintBasic(k) {
     var row = document.getElementById('b_' + k), v = fixGet(k);
@@ -2105,10 +2122,10 @@ p.cn{margin:6px 0 2px}
   // ---------- 切結書（整份第 5 頁）會這樣印（判讀的 切結預覽；選的、改的有變 0.5 秒後打 /api/judge 重算） ----------
   // 10/22：最後一關照印出來的樣子大字列出每一行（勾哪一格、日期、工會名稱），每一行下面小字寫從哪裡來。切結書有她親筆簽名，
   // 錯了要她本人再跑一趟（台南用立可帶改還要蓋章）：在這裡唸給她聽、她說都對才產生
-  // 雲嘉南的梯次（台南上課，KNOWN 168）印雲嘉南切結書 V4：工會那行多「□職業工會□漁會□農會□屬裁減續保身分」（照名稱勾一格，
+  // 通訊地址屬雲嘉南（KNOWN 168）印雲嘉南切結書 V4：工會那行多「□職業工會□漁會□農會□屬裁減續保身分」（照名稱勾一格，
   // 跟 填官方表格.工會類型 同一條）、多一條「已知悉…就業保險投保單位」（一律勾）、沒有通訊地址那行；申請表後面多一張身分證影本，
-  // 切結書在整份第 6 頁（身分證欄位留空的沒有那一張：第 5 頁）。高屏澎東、認不出縣市的梯次照舊
-  // 桃竹苗的梯次（11/17）印桃竹苗的無工作切結書：只有工會那兩格（類型五格，多「職災續保」，tz＝true 時先認「職災」）、非負責人、
+  // 切結書在整份第 6 頁（身分證欄位留空的沒有那一張：第 5 頁）。通訊地址屬高屏澎東、北基宜花金馬用原高雄版；認不出縣市不出預覽
+  // 通訊地址屬桃竹苗（11/17）印桃竹苗的無工作切結書：只有工會那兩格（類型五格，多「職災續保」，tz＝true 時先認「職災」）、非負責人、
   // 兩條知悉條款（擇一適用、不予發給），沒有①②③、親屬那條、工會名稱線、戶籍地址；申請表、身分證影本、頁碼跟台南一樣
   function unionKind(n, tz) {
     n = str(n);
@@ -2124,7 +2141,7 @@ p.cn{margin:6px 0 2px}
   // 直接改（state.fix 切結改 → 核對後.切結改；雲端照它印，判讀的 切結預覽 就是改好的那份、切結自動 是系統算的）。改過的那一行黃框
   // 「已改」，「回到自動」拿掉；改了就要請她再看一次。跟勞保對不起來雲端回黃色提醒（只提醒、不擋），列在清單下面。
   // 工會那兩格（目前無加入／投保於…中）只會勾一格：當一行改（兩行的「改」打開同一個）。
-  // 11/17（KNOWN 193，Tomi「切結書都要能改」）：工會那行的迄可以選「今」／留白／打日期（沒選＝雲端照梯次的分署：高屏澎東「今」、其他留白）；
+  // 11/17（KNOWN 193，Tomi「切結書都要能改」）：工會那行的迄可以選「今」／留白／打日期（沒選＝雲端照通訊地址的分署：高屏澎東「今」、其他留白）；
   // 台中版親屬那條可以打「公司或用人單位名稱」（沒打＝不印，Tomi 11/13）；最上面「整份留白」一次把這一版每一行改成留白、「恢復成系統勾的」全部拿掉。
   // 舊雲端（判讀沒有 切結自動）不出「改」：送了它也不認
   var PV_KEYS = ['①', '②', '③', '工會', '非負責人', '知悉親屬條款', '知悉投保單位', '知悉擇一', '知悉不予發給'];   // 最後兩條桃竹苗版才有
@@ -2138,14 +2155,14 @@ p.cn{margin:6px 0 2px}
     var n = ks.length === 5 ? '五' : '四';
     return ks.indexOf(tk) >= 0 ? '' : kSet ? '；' + n + '格都不勾：她自己勾一格' : '；看名稱認不出是哪一種，印出來' + n + '格都沒勾：請她自己勾一格';
   }
-  function pvKinds() { return classOffice() === '桃竹苗' ? PV_TZ_KINDS : PV_KINDS; }
+  function pvKinds() { return addressOffice() === '桃竹苗' ? PV_TZ_KINDS : PV_KINDS; }
   var PV_NOTE = '切結書改了，要請她再看一次、再唸一次。';
   var pvOpen = '', pvLate = false;   // 打開「改」的那一行；預覽回來時她正在改的格子裡打字：先不重畫，離開那幾格再畫
   var pvToDate = false;   // 工會迄日按了「打日期」（格子還空著時也照樣顯示打日期的格子）
   var PV_KIN_MAX = 38;   // 台中版親屬那條「公司或用人單位名稱」放得下的字數（跟 填官方表格.親屬單位名稱上限 同一個數）
-  // 工會那行的迄日沒選＝雲端照梯次的分署（判讀.工會迄：高屏澎東「今日」、其他留白）：預設看梯次，不看系統算的工會
-  // （系統沒算出工會、寫手手動勾「投保於…中」時，系統那份沒有迄；換了梯次預覽還沒回來也一樣）
-  function pvToDef() { return classOffice() === '高屏澎東' || classOffice() === '北基宜花金馬' ? '今日' : ''; }   // 北基宜花金馬照高雄版（11/17）
+  // 工會那行的迄日沒選＝雲端照通訊地址的分署（判讀.工會迄：高屏澎東「今日」、其他留白）：預設看通訊地址，不看系統算的工會
+  // （系統沒算出工會、寫手手動勾「投保於…中」時，系統那份沒有迄；地址改了但預覽還沒回來時不沿用舊版）
+  function pvToDef() { return addressOffice() === '高屏澎東' || addressOffice() === '北基宜花金馬' ? '今日' : ''; }   // 北基宜花金馬照高雄版（11/17）
   function pvIsTo(k, f) { return k === '工會' && f === '迄'; }
   function pvShape(v) {
     var o = {};
@@ -2160,7 +2177,7 @@ p.cn{margin:6px 0 2px}
     return o;
   }
   function PV() { return state.fix['切結改']; }
-  function pvCan() { return !!state.fix && !!J()['切結自動']; }
+  function pvCan() { return !!state.fix && previewCurrent() && !!J()['切結自動']; }
   function pvAuto() { return obj(J()['切結自動']); }
   function pvBlank(p, k) { return arr(p['留白']).indexOf(k) >= 0; }
   // 印出來那一行（p＝切結預覽或切結自動）：勾／不勾／留白。工會：勾＝「投保於…中」，不勾＝「本人目前無加入」
@@ -2195,7 +2212,7 @@ p.cn{margin:6px 0 2px}
   function pvTidy(k) {
     var o = PV()[k], a = pvAuto();
     function d(f, s) { return f === '名稱' ? clean(s) : normDate(s) || clean(s); }
-    if (k === '工會' && o && '迄' in o && d('迄', o['迄']) === d('迄', pvToDef())) delete o['迄'];   // 工會迄日選回跟梯次預設一樣
+    if (k === '工會' && o && '迄' in o && d('迄', o['迄']) === d('迄', pvToDef())) delete o['迄'];   // 工會迄日選回跟地址對應版本的預設一樣
     if (!o || o['勾'] !== pvStateOf(a, k)) return;
     if (o['勾'] === '勾' && (PV_FIELDS[k] || []).some(function (f) {
       return f === '類型' || pvIsTo(k, f) ? f in o : d(f, o[f]) !== d(f, pvValOf(a, k, f));
@@ -2220,7 +2237,7 @@ p.cn{margin:6px 0 2px}
   function pvToSay(v) { v = str(v); return v === '今日' ? '至「今」' : v ? '至 ' + ymd(v) : '迄日留白'; }
   function pvToMode() { var v = pvVal('工會', '迄'); return v === '今日' ? '今' : v || pvToDate ? '日期' : '留白'; }
   function pvEditHTML(k, tn) {
-    var tz = classOffice() === '桃竹苗';
+    var tz = addressOffice() === '桃竹苗';
     var st = pvState(k), u = k === '工會', o = PV()[k];
     var opts = u ? [['勾', '勾「投保於…中」'], ['不勾', '勾「本人目前無加入」'], ['留白', '兩格都留白（她自己勾）']]
       : [['勾', '勾'], ['不勾', '不勾'], ['留白', '留白（她自己勾）']];
@@ -2230,7 +2247,7 @@ p.cn{margin:6px 0 2px}
     var h = '<div class="pved" id="pved"><p class="flabel">' + (u ? '工會那兩格印出來：' : '這一行印出來：') + '</p><div class="chips">' +
       opts.map(function (x) { return chip('pvSet', x[0], st === x[0], x[1]); }).join('') + '</div>';
     if (st === '留白') h += '<p class="hint">' + (u ? '兩格都不勾、名稱日期都不印' : '不勾、不印字') + '，印出來她自己勾、寫（在空格手寫不算塗改）。</p>';
-    if (st === '勾' && k === '知悉親屬條款' && classOffice() === '中彰投')   // 台中版才有這格：沒打＝不印（Tomi 11/13）
+    if (st === '勾' && k === '知悉親屬條款' && addressOffice() === '中彰投')   // 台中版才有這格：沒打＝不印（Tomi 11/13）
       h += fixField('pv.知悉親屬條款.名稱', '公司或用人單位名稱', { plain: true, ph: '空白＝不印（照規定）' }) +
         '<div id="pvkin">' + pvKinHTML() + '</div>';
     if (st === '勾' && k === '①') {
@@ -2243,7 +2260,7 @@ p.cn{margin:6px 0 2px}
     if (st === '勾' && u) {
       var to = pvToMode(), def = pvToDef() ? '印「今」' : '留白';
       h += fixField('pv.工會.名稱', tz ? '名稱（桃竹苗版不印，照名稱認勾哪一格）' : '名稱', { plain: true, ph: '例 高雄市美容職業工會' }) + fixField('pv.工會.起', '起', { plain: true, ph: '例 114/02/01' }) +
-        '<p class="flabel">「至＿年＿月＿日止」（這個梯次預設' + def + '）</p><div class="chips">' +
+        '<p class="flabel">「至＿年＿月＿日止」（這份切結書預設' + def + '）</p><div class="chips">' +
         [['今', '印「今」'], ['留白', '留白（她自己寫）'], ['日期', '打日期']].map(function (x) {
           return chip('pvTo', x[0], to === x[0], x[1]); }).join('') + '</div>';
       if (to === '日期') h += fixField('pv.工會.迄', '到', { plain: true, ph: '例 115/11/17（空白＝她手寫）' });
@@ -2263,22 +2280,22 @@ p.cn{margin:6px 0 2px}
       '</div></div>';
   }
   // 送出的 核對後.切結改（fixOut 用）：日期整理成 YYY/MM/DD（工會迄日的「今日」照送）、名稱去頭尾空白；
-  // 台中版親屬那格的名稱只在中彰投梯次送（換了梯次就不送打過的，11/17 審查）
+  // 台中版親屬那格的名稱只在通訊地址屬中彰投時送
   function pvOut() {
-    var pv = PV(), po = {};
+    var pv = addressOffice() && state.fix['切結分署'] === addressOffice() ? PV() : {}, po = {};
     function d(v) { var x = normDate(v); return x === null ? clean(v) : x; }
     Object.keys(pv).forEach(function (k) {
       var x = JSON.parse(JSON.stringify(pv[k]));
       ['日', '起', '迄'].forEach(function (g) { if (typeof x[g] === 'string') x[g] = d(x[g]); });
       if (typeof x['名稱'] === 'string') x['名稱'] = clean(x['名稱']);
-      if (k === '知悉親屬條款' && classOffice() !== '中彰投') delete x['名稱'];
+      if (k === '知悉親屬條款' && addressOffice() !== '中彰投') delete x['名稱'];
       po[k] = x;
     });
     return po;
   }
   // 整份留白（11/17）：這一版有的每一行（台南版多「知悉投保單位」；桃竹苗版只有 PV_TZ_KEYS）
   function pvKeysOf(tn) {
-    if (classOffice() === '桃竹苗') return PV_TZ_KEYS.slice();
+    if (addressOffice() === '桃竹苗') return PV_TZ_KEYS.slice();
     return PV_KEYS.filter(function (k) { return k !== '知悉擇一' && k !== '知悉不予發給' && (k !== '知悉投保單位' || tn); });
   }
   function pvAllBlank(tn) { return pvKeysOf(tn).every(function (k) { return obj(PV()[k])['勾'] === '留白'; }); }
@@ -2294,11 +2311,13 @@ p.cn{margin:6px 0 2px}
     return ws.length ? '<div class="box warn pvw"><p>現場改的，跟勞保或規定對不起來（只提醒，照樣能產生）：</p>' + listHTML(ws) + '</div>' : '';
   }
   function previewHTML() {
-    var tn = classOffice() === '雲嘉南', tc = classOffice() === '中彰投';   // tc：台中版（中彰投 1-5，11/13）
-    var tz = classOffice() === '桃竹苗';   // tz：桃竹苗無工作切結書（11/17）
+    if (!addressOffice()) return '<h3 class="st2">切結書預覽</h3><p class="hint" id="pvst" role="status">' + esc(areaMsg()) + '</p>';
+    var tn = addressOffice() === '雲嘉南', tc = addressOffice() === '中彰投';   // tc：台中版（中彰投 1-5，11/13）
+    var tz = addressOffice() === '桃竹苗';   // tz：桃竹苗無工作切結書（11/17）
     var j = J(), p = j['切結預覽'], hand = false, h = '<h3 class="st2">' +
       (tn || tc || tz ? '切結書（' + (tn ? '台南' : tc ? '台中' : '桃竹苗') + '版，整份第 ' + (sheetNoId() ? 5 : 6) + ' 頁）會這樣印' : '切結書（整份第 5 頁）會這樣印') + '</h3>' +
       '<p class="hint" id="pvst" role="status">' + esc(pvText()) + '</p>';
+    if (!previewCurrent()) return h + '<p class="hint">' + esc(previewWait()) + '</p>';
     if (!p || typeof p !== 'object') return h + factsHTML(j);
     var can = pvCan(), pv = can ? PV() : {}, a = pvAuto();
     if (can) h += pvAllHTML(tn);
@@ -2396,7 +2415,7 @@ p.cn{margin:6px 0 2px}
   function seenBtnHTML() {
     var on = seenOk();
     return (seenNote && !on ? '<p class="hint">' + esc(seenNote) + '</p>' : '') +
-      '<button type="button" class="opt chk" data-act="seen" role="checkbox" aria-checked="' + on + '"><span class="mark">' + CHECK + '</span>' +
+      '<button type="button" class="opt chk" data-act="seen" role="checkbox" aria-checked="' + on + '"' + (previewCurrent() ? '' : ' disabled') + '><span class="mark">' + CHECK + '</span>' +
       '<span class="t">基本資料、切結書都唸給她聽過，她說都對' + (on ? '<span class="sub2">（再按一次取消）</span>' : '') + '</span></button>';
   }
   function paintSeen() { setHTML('seenbasic', seenHTML()); setHTML('seenbtn', seenBtnHTML()); secPaint(); }
@@ -2481,6 +2500,7 @@ p.cn{margin:6px 0 2px}
   // 通關碼不對（401）：跟其他呼叫一樣叫出通關碼畫面，換好之前不再打（jdOff；錯的碼一直送，雲端打錯 30 次會把整家店鎖 15 分鐘）
   var jdTimer = 0, jdSeq = 0, jdPend = false, jdFail = false, jdTried = false, jdAgain = false, jdOff = false;
   function pvText() {
+    if (!previewCurrent()) return !addressOffice() ? '通訊地址還沒確認' : jdFail ? '還沒更新，請稍後再試；更新後才能確認切結書。' : '更新中…';
     if (jdFail) return '！ 還沒更新，先不要唸' + (jdPend ? '（再試一次…）' : '（暫時連不上雲端，不影響產生）');
     return jdPend ? '更新中…' : '';
   }
@@ -2502,7 +2522,7 @@ p.cn{margin:6px 0 2px}
     var my = ++jdSeq;
     jdTimer = 0;
     var body = { '資料表': state.sheet || buildText(), '身分證': IDC(), '勞保': LB(), '核對後': fixOut(),
-      '梯次': state.batch ? state.batch['梯次'] : '' };   // 11/13：雲端照梯次的分署算切結書工會那行的迄（高屏澎東印「今」，KNOWN 172）
+      '梯次': state.batch ? state.batch['梯次'] : '' };   // 雲端依核對後通訊地址算切結書工會那行的迄（高屏澎東印「今」，KNOWN 172）
     api('POST', '/api/judge', JSON.stringify(body), WAIT_MS.judge, function (r) {
       if (my !== jdSeq || view !== 'screen' || state.pos !== REVIEW || !state.fix) return;   // 有更新的一次、或已經離開核對頁
       var j = r.ok && r.data ? r.data['判讀'] : null;
@@ -2521,6 +2541,7 @@ p.cn{margin:6px 0 2px}
       }
       jdFail = false;
       state.jd = j;
+      syncPostal(j);
       var moved = syncJob();
       // 她看過之後切結書變了（例：改了勞保的日期、換了離開原因）：要請她再看一次（10/22 起她看過連切結書一起確認）
       if (seenOk() && seenPv && pvSig() !== seenPv) unsee('切結書變了，要請她再看一次、再唸一次。');
@@ -2533,7 +2554,7 @@ p.cn{margin:6px 0 2px}
   function paintJudge() {
     setHTML('vbox', verdictHTML(J()));
     if (inPreview()) pvLate = true; else setHTML('preview', previewHTML());   // 正在切結書「改」的格子裡打字：離開那幾格再畫
-    setHTML('say', sayHTML(J()));
+    setHTML('say', previewCurrent() ? sayHTML(J()) : '');
     if (JSON.stringify(cands() || []) !== shownCands) {
       setHTML('joblist', jobListHTML());
       var d = document.getElementById('jobdet');
@@ -2660,6 +2681,7 @@ p.cn{margin:6px 0 2px}
   // 她看過，都對（10/22 起連切結書一起確認）：按了（或取消）預覽重算——雲端在她看過之後不再提醒三方對不上，提醒框要跟著換；
   // 記下按的時候看到的切結書，之後判讀回來切結書不一樣就自動取消
   function onSeen() {
+    if (!previewCurrent()) { showMsg(previewWait()); return; }
     var b = state.fix['基本資料'];
     b['她看過都對'] = !b['她看過都對'];
     seenNote = '';
@@ -2678,7 +2700,7 @@ p.cn{margin:6px 0 2px}
     return !!(a && pv && pv.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'));
   }
   function onPvOpen(k) { pvOpen = pvOpen === k ? '' : k; render(); }
-  function pvChanged() { unsee(PV_NOTE); fixed(); }
+  function pvChanged() { state.fix['切結分署'] = addressOffice(); unsee(PV_NOTE); fixed(); }
   function onPvSet(k, v) {
     if (PV_KEYS.indexOf(k) < 0 || ['勾', '不勾', '留白'].indexOf(v) < 0) return;
     PV()[k] = pvMake(k, v);
@@ -2713,7 +2735,7 @@ p.cn{margin:6px 0 2px}
     pvChanged();
   }
   function onPvAllBlank() {
-    var tn = classOffice() === '雲嘉南';
+    var tn = addressOffice() === '雲嘉南';
     pvKeysOf(tn).forEach(function (k) { PV()[k] = { '勾': '留白' }; });
     pvOpen = ''; pvToDate = false;
     pvChanged();
@@ -2983,7 +3005,7 @@ p.cn{margin:6px 0 2px}
   // 以前），網頁不判斷。列印照列印站：電腦隱藏框叫列印視窗＋新分頁退路、平板手機在新分頁打開；PDF 只放記憶體，重新整理、離開就丟掉
   // 寫手回報寄出、核准函（#388，Tomi 11/19「開放，照規劃」；規格 18-4）：照「要做的事」分段（還沒寄出、等核准函、已核准，等上課、分署不核准，
   // 各段寫幾位）；每張卡一顆大按鈕（申請寄出了／收到核准函），「分署不核准」「要再印申請文件、信封」是小字按鈕（再印打開就是原本的列印那一塊）。
-  // 按下去在同一格確認（寄出選日期，預設今天、不能選明天以後；不核准可以填原因），按完那一格原地縮成綠框「✓ 已記下：…」（不跳走，下次打開才換段）。
+  // 按下去在同一格確認（寄出、收到核准函選日期，預設今天、不能選明天以後，收到日也不能比寄出日早〔Tomi 11/19〕；不核准可以填原因），按完那一格原地縮成綠框「✓ 已記下：…」（不跳走，下次打開才換段）。
   // 每位在哪一段、誰哪天記的由雲端給（/api/mine 每位的 進度、寄出日、核准紀錄…），能不能記也由雲端判斷（POST /api/mine/progress）
   var myList = null, myAll = false, myErr = '', myLoading = false, mySeq = 0, myJob = '', myUrls = {};
   // myOpen：正在確認的那一格 { no, step, date, reason, busy, err }；mySaved：剛記好的 編號 → { at（原本那一段）, text, note }；
@@ -3160,8 +3182,9 @@ p.cn{margin:6px 0 2px}
   function myDoneHTML(p, at) {
     var d = p.d, no = Number(d['編號']), nm = str(d['姓名']) || '（沒有姓名）', ok = at === '已核准', rec = obj(d[ok ? '核准紀錄' : '不核准紀錄']);
     var who = myWho(rec['誰']), day = myDay(rec['日']), open = myOpen && myOpen.no === no ? myOpen : null;
+    var got = ok ? myDay(d['核准日']) : '';   // 收到核准函那一天（以前記的沒有）
     var h = '<li data-my="' + no + '"><div class="ml1"><span class="mwho">' + esc(nm) + '</span><span class="mwhat' + (ok ? ' mgood' : '') + '">' + (ok ? '已核准' : '不核准') + '</span></div>' +
-      '<div class="mwhen">' + esc(myClassDay(p.b) + (ok ? '上課' : '的課') + (who || day ? '・' + (who ? who + ' ' : '') + day + '記的' : '')) + myWriterHTML(d) + '</div>';
+      '<div class="mwhen">' + esc(myClassDay(p.b) + (ok ? '上課' : '的課') + (got ? '・' + got + '收到核准函' : '') + (who || day ? '・' + (who ? who + ' ' : '') + day + '記的' : '')) + myWriterHTML(d) + '</div>';
     if (!ok) h += open ? myConfirmHTML(d, open) : '<button type="button" class="linkbtn mlink" data-act="myAsk" data-no="' + no + '" data-step="改回">按錯了，改回等核准函</button>';
     return h + '</li>';
   }
@@ -3175,13 +3198,16 @@ p.cn{margin:6px 0 2px}
     });
     return h + '</div>' + (links.length ? '<p class="sfall">列印視窗沒有出來？用新分頁打開：' + links.join('') + '</p>' : '');
   }
-  // 同一格確認：寄出選日期（預設今天、最多到今天）、不核准可以填原因；儲存中、沒存成（紅字）都寫在這一格
+  // 同一格確認：寄出、收到核准函選日期（預設今天、最多到今天；收到日最早是寄出日）、不核准可以填原因；儲存中、沒存成（紅字）都寫在這一格
   function myConfirmHTML(d, o) {
     var no = Number(d['編號']), nm = str(d['姓名']) || '她', s = o.step;
     var title = s === '寄出' ? nm + '的申請寄出了？' : s === '核准' ? nm + '收到核准函了？' : s === '不核准' ? nm + '的申請，分署不核准？' : '把' + nm + '改回等核准函？';
     var h = '<div class="mconf' + (s === '核准' ? ' okc' : '') + '" role="group" aria-labelledby="mc' + no + '"><h3 id="mc' + no + '">' + esc(title) + '</h3>';
-    if (s === '寄出') h += '<label class="flabel" for="md' + no + '">哪一天寄的</label><input class="field" id="md' + no + '" type="date" data-myf="date" value="' +
-      esc(o.date) + '" max="' + esc(myIso(todayTW())) + '"' + (o.busy ? ' disabled' : '') + '>';
+    if (s === '寄出' || s === '核准') {
+      var lo = s === '核准' ? myIso(d['寄出日']) : '';
+      h += '<label class="flabel" for="md' + no + '">' + (s === '寄出' ? '哪一天寄的' : '哪一天收到的') + '</label><input class="field" id="md' + no + '" type="date" data-myf="date" value="' +
+        esc(o.date) + '" max="' + esc(myIso(todayTW())) + '"' + (lo ? ' min="' + esc(lo) + '"' : '') + (o.busy ? ' disabled' : '') + '>';
+    }
     if (s === '不核准') h += '<label class="flabel" for="mr' + no + '">分署寫的原因（可以不填）</label><input class="field" id="mr' + no + '" type="text" data-myf="reason" maxlength="200" value="' +
       esc(o.reason) + '"' + (o.busy ? ' disabled' : '') + '>';
     h += '<p class="msmall">' + (s === '不核准' ? '按錯了可以改回等核准函。' : s === '改回' ? '不核准的紀錄會清掉，她回到等核准函。' : MY_ASK) + '</p>';
@@ -3222,10 +3248,13 @@ p.cn{margin:6px 0 2px}
   function myDo() {
     var o = myOpen, p = o && myPerson(o.no);
     if (!o || o.busy || !p) return;
-    if (o.step === '寄出' && !/^\d{4}-\d{2}-\d{2}$/.test(o.date)) { o.err = '請選她寄出的那一天。'; render(); return; }
-    if (o.step === '寄出' && o.date > myIso(todayTW())) { o.err = '寄出日不能是明天以後，請改成她真的寄出的那一天。'; render(); return; }
+    var sent = o.step === '寄出', got = o.step === '核准', lo = got ? myIso(p.d['寄出日']) : '';
+    if ((sent || got) && !/^\d{4}-\d{2}-\d{2}$/.test(o.date)) { o.err = sent ? '請選她寄出的那一天。' : '請選她收到核准函的那一天。'; render(); return; }
+    if ((sent || got) && o.date > myIso(todayTW())) { o.err = (sent ? '寄出日' : '收到日') + '不能是明天以後，請改成她真的' + (sent ? '寄出' : '收到核准函') + '的那一天。'; render(); return; }
+    if (got && lo && o.date < lo) { o.err = '收到日不能比寄出日早，請改成她真的收到核准函的那一天。'; render(); return; }
     var body = { '編號': o.no, '動作': o.step };
-    if (o.step === '寄出') body['寄出日'] = o.date;
+    if (sent) body['寄出日'] = o.date;
+    if (got) body['收到日'] = o.date;
     if (o.step === '不核准' && clean(o.reason)) body['原因'] = clean(o.reason).slice(0, 200);
     o.busy = true;
     o.err = '';
@@ -3243,7 +3272,7 @@ p.cn{margin:6px 0 2px}
       var d = obj(r.data['學員']), q = myPerson(o.no);
       if (q && Number(d['編號']) === o.no) q.x.people[q.i] = d; else d = p.d;
       var nm = str(d['姓名']) || '她', now = MY_SECTIONS.filter(function (s) { return s[0] === d['進度']; })[0];
-      mySaved[o.no] = { at: was, text: o.step === '寄出' ? nm + ' ' + myDay(d['寄出日']) + '寄出' : o.step === '核准' ? nm + '收到核准函' : o.step === '不核准' ? nm + '分署不核准' : nm + '改回等核准函',
+      mySaved[o.no] = { at: was, text: o.step === '寄出' ? nm + ' ' + myDay(d['寄出日']) + '寄出' : o.step === '核准' ? nm + (myDay(d['核准日']) ? ' ' + myDay(d['核准日']) : '') + '收到核准函' : o.step === '不核准' ? nm + '分署不核准' : nm + '改回等核准函',
         note: (now ? '下次打開這一頁，她會在「' + now[1] + '」那一段。' : '') + (r.data['已經記過'] === true ? '（之前就記好了）' : '') };
       myOpen = null;
       delete myMore[o.no];
@@ -3955,7 +3984,7 @@ p.cn{margin:6px 0 2px}
     return m ? { path: m[0], msg: m[1] + '是空的，請照身分證填上（沒有它做不出申請文件）。' } : null;
   }
   // 主按鈕：五格都有字、按了「基本資料、切結書都唸給她聽過，她說都對」才是能按的樣式（打字、點選時跟著變）
-  function genOff() { return missingFix().length > 0 || areaBad() || !seenOk(); }
+  function genOff() { return missingFix().length > 0 || areaBad() || !previewCurrent() || !seenOk(); }
   function paintGen() { var b = document.getElementById('gen'); if (b) b.setAttribute('aria-disabled', genOff() ? 'true' : 'false'); setHTML('areabox', areaHTML()); }
   // 送出的「核對後」（3-4 的格式；日期整理成 YYY/MM/DD、字號大寫；勞保的「看不清楚」照 AI 原本的清單）。產生、預覽（/api/judge）都送這一份
   function fixOut() {
@@ -3979,6 +4008,7 @@ p.cn{margin:6px 0 2px}
     // 10/22：卡片多「工作內容」（帶這一格＝雲端照卡片、不回頭用資料表）、「公保軍保」（＋新增那份）；職稱、為什麼離開都是卡片上問的
     o['版本'] = 2;
     o['基本資料'] = { '她看過都對': seenOk() };
+    o['切結分署'] = state.fix['切結分署'] || addressOffice();
     var w = cands() ? selJob() : null, c = jobCand();
     if (c) {
       var own = ownStore();   // true／false＝現場點過（行號沒點過＝true）；null＝還沒問（不送 false，雲端才會照樣提醒問她）
@@ -4012,6 +4042,7 @@ p.cn{margin:6px 0 2px}
   function rejudged(j) {
     var before = str(lastCo(J())['機構']), ng = state.fix['未投保工作'];
     state.jd = j;
+    syncPostal(j);
     if (cands()) { syncJob(); return; }
     if (str(lastCo(j)['機構']) !== before) state.fix['最後公司職稱'] = str(lastCo(j)['職稱']);
     if (!str(lastCo(j)['機構']) && !NG_KEYS.some(function (k) { return clean(ng[k]); })) state.fix['未投保工作'] = ngOf(j['未投保工作']);
@@ -4052,6 +4083,7 @@ p.cn{margin:6px 0 2px}
     var bad = checkFix();
     if (bad) { showMsg(bad.msg); markErr(bad.path, bad.msg); return; }
     if (areaBad()) { showMsg(areaMsg()); var aw = wrapOf('通訊地址'), ai = aw && aw.querySelector('.inp'); if (aw) aw.classList.add('ferr'); if (ai) { try { ai.focus(); } catch (e) { /* 略過 */ } } return; }
+    if (!previewCurrent()) { showMsg(previewWait()); return; }
     if (!seenOk()) { showMsg('還沒請她看過基本資料、切結書。\n請把畫面轉給她看、唸給她聽，她說都對，按上面的「基本資料、切結書都唸給她聽過，她說都對」。'); return; }
     clearTimeout(jdTimer); jdTimer = 0; jdSeq++; jdPend = false;   // 預覽不用再算了：產生時雲端會用核對後重新判讀
     busy = true;
@@ -4761,6 +4793,11 @@ p.cn{margin:6px 0 2px}
     if (myInput(t)) return;   // 我協助的學員：確認那一格的寄出日、原因（#388）
     if (fp && state.fix) {   // 核對頁改欄位（不整頁重畫，游標才不會跑掉）
       setFix(fp, t.value);
+      if (fp === '通訊地址') {
+        var postal = document.getElementById('x_郵遞區號');
+        if (postal) postal.value = state.fix['郵遞區號'];
+        paintFix('郵遞區號'); paintJudge();
+      }
       if (BASIC.indexOf(fp) >= 0) { unsee(); paintBasic(fp); paintSeen(); }   // 基本資料改了：要請她再看一次
       // 切結書的日期跟著變的格子（新增那份的起迄、勞保每一列）：切結書要請她再看一次（10/22 起她看過連切結書一起確認）
       else if (/^(ng\.(起|迄)|md\.|nb\.)/.test(fp)) { unsee('切結書的日期跟著變了，要請她再看一次、再唸一次。'); setHTML('seenbtn', seenBtnHTML()); }
