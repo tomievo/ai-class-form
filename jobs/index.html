@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="format-detection" content="telephone=no, email=no, address=no">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="data:,">
+<title>重返職場課程｜求職登記</title>
+<script>
+// 雲端服務網址（同 ../index.html、../line/index.html，結尾不要加斜線）。留空字串＝測試模式：不連網，按「送出」只在 console 印出要送的資料。
+// 本機練習：測試資料/網頁測試伺服器.py 會複製一份、把這一行換成本機雲端；正本一律保持正式網址
+var SERVICE_URL = 'https://gov-subsidy-450277428146.asia-east1.run.app';
+</script>
+<!--
+  就業通手機填（2026-11-18，場「核銷｜就業通補填系統」；規格 docs/規格_就業通手機填.md 第 2、3 節）
+  - 協助別的班核銷、沒有報名資料時：學員掃地區 QR（#高屏澎東／#雲嘉南／#中彰投），用自己手機一題一畫面填，
+    送出（POST /api/jobs/intake）後手機出現 4 位數號碼，工作人員在筆電打號碼拿資料、幫她開台灣就業通履歷
+  - 一題一畫面、大字（DESIGN.md「學員手機表單」）；中途關掉再打開接著填、號碼也存在她手機（localStorage）
+  - 不載任何外部資源；縣市、區的清單直接嵌在下面 AREAS（台灣就業通的字，縣市用「台」）
+  - 系統只提醒不擋：身分證檢查碼不對、Email 像打錯 → 黃色提醒一次，再按一次照樣下一題；只有空白、雲端一定不收的格式才擋
+-->
+<style>
+:root{
+  --ink:#111111;--ink2:#2b2b2b;--line:#595959;--bg:#ffffff;--soft:#efefec;
+  --pri:#0b4f9c;--pri-dk:#083b75;--pri-bg:#e3edfa;
+  --err:#a00000;--err-bg:#fff0f0;--warn:#5c3800;--warn-bg:#fff4d8;--warn-bd:#9a6400;
+  color-scheme:light
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{background:var(--bg);-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Heiti TC","Noto Sans TC","Noto Sans CJK TC","Microsoft JhengHei",sans-serif;font-size:22px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px 48px}
+button,input,select,textarea{font:inherit;color:inherit;margin:0}
+button{-webkit-appearance:none;appearance:none;cursor:pointer;touch-action:manipulation}
+h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
+.lead{font-size:24px;margin:0 0 14px}
+.place{font-size:30px;font-weight:800;line-height:1.35;margin:0 0 18px;padding:14px 16px;border:3px solid var(--ink2);border-radius:14px}
+.hint{font-size:22px;color:var(--ink2);margin:0 0 8px}
+.tm{margin:12px 0 0;padding:8px 12px;border:3px dashed var(--ink2);border-radius:12px;background:var(--warn-bg);font-size:20px;font-weight:800;text-align:center}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:12px 0 8px}
+.back{min-height:64px;padding:8px 18px 8px 12px;border:3px solid var(--ink2);border-radius:14px;background:#fff;color:var(--ink);font-size:22px;font-weight:700}
+.back:active{background:var(--soft)}
+.count{font-size:22px;font-weight:800;padding:6px 0 6px 12px}
+.bar{height:14px;border:2px solid var(--ink2);border-radius:8px;background:#fff;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--pri)}
+.qt{font-size:30px;line-height:1.35;font-weight:800;margin:24px 0 10px}
+.qt:focus,h1:focus,.num:focus{outline:none}
+.opts{margin:6px 0 0}
+.opt{display:flex;align-items:center;width:100%;min-height:72px;margin:0 0 14px;padding:12px 16px;border:3px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);font-size:24px;font-weight:600;line-height:1.35;text-align:left}
+.opt:active{background:var(--soft)}
+.mark{flex:none;display:flex;align-items:center;justify-content:center;width:38px;height:38px;margin-right:14px;border:3px solid var(--ink2);border-radius:50%;background:#fff}
+.multi .mark{border-radius:8px}
+.mark svg{width:26px;height:26px;visibility:hidden}
+.opt[aria-checked="true"]{border-color:var(--pri);box-shadow:0 0 0 3px var(--pri);background:var(--pri-bg)}
+.opt[aria-checked="true"] .mark{background:var(--pri);border-color:var(--pri)}
+.opt[aria-checked="true"] .mark svg{visibility:visible}
+.opt .t{flex:1;min-width:0}
+.note{display:inline-block;font-size:22px;font-weight:400;color:var(--ink2)}
+.flabel{display:block;font-size:22px;font-weight:800;margin:14px 0 8px}
+.field{display:block;width:100%;min-height:72px;padding:14px 16px;border:3px solid var(--ink2);border-radius:14px;background:#fff;color:var(--ink);font-size:26px;line-height:1.4;-webkit-appearance:none;appearance:none}
+textarea.field{min-height:150px;resize:vertical}
+select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 9l7 7 7-7' fill='none' stroke='%23111' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;background-size:28px 28px}
+.field:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--pri)}
+.row3{display:flex;gap:10px}
+.row3>div{flex:1;min-width:0}
+.row3 select.field{padding-left:10px;padding-right:34px;background-position:right 6px center;background-size:22px 22px;font-size:24px}
+.or{font-size:22px;font-weight:800;margin:22px 0 4px}
+.box{margin:14px 0;padding:14px 16px;border:3px solid;border-radius:14px;font-size:22px;font-weight:700;line-height:1.5}
+.box p{margin:0}
+.box p+p{margin-top:8px}
+.err{border-color:var(--err);background:var(--err-bg);color:var(--err)}
+.warn{border-color:var(--warn-bd);background:var(--warn-bg);color:var(--warn)}
+.btn{display:block;width:100%;min-height:72px;margin:20px 0 0;padding:14px 18px;border:3px solid var(--pri);border-radius:14px;background:var(--pri);color:#fff;font-size:26px;font-weight:800;line-height:1.3;text-align:center}
+.btn:active{background:var(--pri-dk)}
+.btn2{background:#fff;color:var(--pri-dk)}
+.btn2:active{background:var(--pri-bg)}
+.btn[aria-disabled="true"]{background:#e6e6e6;border-color:#7a7a7a;border-style:dashed;color:#333}
+.linkbtn{display:block;width:100%;min-height:64px;margin:12px 0 0;padding:8px 16px;border:0;background:none;color:var(--ink2);font-size:22px;text-decoration:underline}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.rv{margin:8px 0 0;padding:0;list-style:none}
+.rv li{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:2px solid var(--line)}
+.rv .rq{font-size:20px;font-weight:700;color:var(--ink2)}
+.rv .ra{font-size:24px;font-weight:800;word-break:break-all}
+.rv .rt{flex:1;min-width:0}
+.rv .edit{flex:none;min-width:72px;min-height:64px;padding:8px 14px;border:3px solid var(--pri);border-radius:14px;background:#fff;color:var(--pri-dk);font-size:22px;font-weight:800}
+.rv .edit:active{background:var(--pri-bg)}
+.donewrap{min-height:calc(100vh - 40px);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+.num{font-size:min(96px,20vw);line-height:1.1;font-weight:900;letter-spacing:.12em;margin:0 0 24px;padding:16px 20px 16px 32px;border:4px solid var(--ink);border-radius:18px;font-variant-numeric:tabular-nums}
+.numtxt{font-size:28px;font-weight:800;line-height:1.45;margin:0}
+.donewrap .linkbtn{margin-top:56px;font-size:20px;width:auto}
+.center{text-align:center}
+</style>
+</head>
+<body>
+<main class="wrap" id="app" aria-live="polite"></main>
+<script>
+(function () {
+  'use strict';
+  var STORE_KEY = 'gov_subsidy.jobs_form.v1';
+  var GUARD_MS = 400;    // 換畫面後這段時間內的點擊不算（防連點點到下一題）
+  var WAIT_MS = 30000;   // 送出最多等多久
+  var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
+  var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  var CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 12.5l5 5L19.5 7" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  // ---------- 地區（網址 # 後面；app.py 收件分署們 的鍵） ----------
+  var REGIONS = {
+    '高屏澎東': { text: '高雄、屏東、澎湖、台東上課', cities: ['高雄市', '屏東縣', '澎湖縣', '台東縣'] },
+    '雲嘉南': { text: '雲林、嘉義、台南上課', cities: ['雲林縣', '嘉義市', '嘉義縣', '台南市'] },
+    '中彰投': { text: '台中、彰化、南投上課', cities: ['台中市', '彰化縣', '南投縣'] }
+  };
+  var REGION = (function () {
+    var h = location.hash.replace(/^#/, '');
+    try { h = decodeURIComponent(h); } catch (e) { return ''; }
+    h = h.replace(/[\s\u3000]+/g, '');
+    return Object.prototype.hasOwnProperty.call(REGIONS, h) ? h : '';
+  })();
+
+  // ---------- 縣市、區（台灣就業通的字；2026-11-18 從 job.taiwanjobs.gov.tw 職缺搜尋頁的「工作地點」清單讀下來，
+  //            categoryPicker.asmx/addCategoryPicker_City，不用登入。照網站順序；拿掉沒人住的東沙、南沙、釣魚台列嶼） ----------
+  var AREAS = [
+    ['台北市', '中正區 大同區 中山區 松山區 大安區 萬華區 信義區 士林區 北投區 內湖區 南港區 文山區'],
+    ['新北市', '萬里區 金山區 板橋區 汐止區 深坑區 石碇區 瑞芳區 平溪區 雙溪區 貢寮區 新店區 坪林區 烏來區 永和區 中和區 土城區 三峽區 樹林區 鶯歌區 三重區 新莊區 泰山區 林口區 蘆洲區 五股區 八里區 淡水區 三芝區 石門區'],
+    ['基隆市', '仁愛區 信義區 中正區 中山區 安樂區 暖暖區 七堵區'],
+    ['桃園市', '中壢區 平鎮區 龍潭區 楊梅區 新屋區 觀音區 桃園區 龜山區 八德區 大溪區 復興區 大園區 蘆竹區'],
+    ['新竹市', '新竹市'],
+    ['新竹縣', '竹北市 湖口鄉 新豐鄉 新埔鎮 關西鎮 芎林鄉 寶山鄉 竹東鎮 五峰鄉 橫山鄉 尖石鄉 北埔鄉 峨眉鄉'],
+    ['苗栗縣', '竹南鎮 頭份市 三灣鄉 南庄鄉 獅潭鄉 後龍鎮 通霄鎮 苑裡鎮 苗栗市 造橋鄉 頭屋鄉 公館鄉 大湖鄉 泰安鄉 銅鑼鄉 三義鄉 西湖鄉 卓蘭鎮'],
+    ['台中市', '中區 東區 南區 西區 北區 北屯區 西屯區 南屯區 太平區 大里區 霧峰區 烏日區 豐原區 后里區 石岡區 東勢區 和平區 新社區 潭子區 大雅區 神岡區 大肚區 沙鹿區 龍井區 梧棲區 清水區 大甲區 外埔區 大安區'],
+    ['南投縣', '南投市 中寮鄉 草屯鎮 國姓鄉 埔里鎮 仁愛鄉 名間鄉 集集鎮 水里鄉 魚池鄉 信義鄉 竹山鎮 鹿谷鄉'],
+    ['彰化縣', '彰化市 芬園鄉 花壇鄉 秀水鄉 鹿港鎮 福興鄉 線西鄉 和美鎮 伸港鄉 員林市 社頭鄉 永靖鄉 埔心鄉 溪湖鎮 大村鄉 埔鹽鄉 田中鎮 北斗鎮 田尾鄉 埤頭鄉 溪州鄉 竹塘鄉 二林鎮 大城鄉 芳苑鄉 二水鄉'],
+    ['雲林縣', '斗南鎮 大埤鄉 虎尾鎮 土庫鎮 褒忠鄉 東勢鄉 台西鄉 崙背鄉 麥寮鄉 斗六市 林內鄉 古坑鄉 莿桐鄉 西螺鎮 二崙鄉 北港鎮 水林鄉 口湖鄉 四湖鄉 元長鄉'],
+    ['嘉義市', '嘉義市'],
+    ['嘉義縣', '番路鄉 梅山鄉 竹崎鄉 阿里山鄉 中埔鄉 大埔鄉 水上鄉 鹿草鄉 太保市 朴子市 東石鄉 六腳鄉 新港鄉 民雄鄉 大林鎮 溪口鄉 義竹鄉 布袋鎮'],
+    ['台南市', '中西區 東區 南區 北區 安平區 安南區 永康區 歸仁區 新化區 左鎮區 玉井區 楠西區 南化區 仁德區 關廟區 龍崎區 官田區 麻豆區 佳里區 西港區 七股區 將軍區 學甲區 北門區 新營區 後壁區 白河區 東山區 六甲區 下營區 柳營區 鹽水區 善化區 大內區 山上區 新市區 安定區'],
+    ['高雄市', '新興區 前金區 苓雅區 鹽埕區 鼓山區 旗津區 前鎮區 三民區 楠梓區 小港區 左營區 仁武區 大社區 岡山區 路竹區 阿蓮區 田寮區 燕巢區 橋頭區 梓官區 彌陀區 永安區 湖內區 鳳山區 大寮區 林園區 鳥松區 大樹區 旗山區 美濃區 六龜區 內門區 杉林區 甲仙區 桃源區 那瑪夏區 茂林區 茄萣區'],
+    ['屏東縣', '屏東市 三地門鄉 霧台鄉 瑪家鄉 九如鄉 里港鄉 高樹鄉 鹽埔鄉 長治鄉 麟洛鄉 竹田鄉 內埔鄉 萬丹鄉 潮州鎮 泰武鄉 來義鄉 萬巒鄉 崁頂鄉 新埤鄉 南州鄉 林邊鄉 東港鎮 琉球鄉 佳冬鄉 新園鄉 枋寮鄉 枋山鄉 春日鄉 獅子鄉 車城鄉 牡丹鄉 恆春鎮 滿州鄉'],
+    ['宜蘭縣', '宜蘭市 頭城鎮 礁溪鄉 壯圍鄉 員山鄉 羅東鎮 三星鄉 大同鄉 五結鄉 冬山鄉 蘇澳鎮 南澳鄉'],
+    ['花蓮縣', '花蓮市 新城鄉 秀林鄉 吉安鄉 壽豐鄉 鳳林鎮 光復鄉 豐濱鄉 瑞穗鄉 萬榮鄉 玉里鎮 卓溪鄉 富里鄉'],
+    ['台東縣', '台東市 綠島鄉 蘭嶼鄉 延平鄉 卑南鄉 鹿野鄉 關山鎮 海端鄉 池上鄉 東河鄉 成功鎮 長濱鄉 太麻里鄉 金峰鄉 大武鄉 達仁鄉'],
+    ['澎湖縣', '馬公市 西嶼鄉 望安鄉 七美鄉 白沙鄉 湖西鄉'],
+    ['金門縣', '金沙鎮 金湖鎮 金寧鄉 金城鎮 烈嶼鄉 烏坵鄉'],
+    ['連江縣', '南竿鄉 北竿鄉 莒光鄉 東引鄉']
+  ];
+  var DISTS = {};
+  AREAS.forEach(function (a) { DISTS[a[0]] = a[1].split(' '); });
+
+  // ---------- 題目（規格第 3–5 節；選項字＝送出值＝台灣就業通的字，n＝括號補充、只給她看） ----------
+  var JOB_KINDS = ['工廠作業員（組裝、包裝、品檢）', '車縫、成衣', '食品加工', '餐飲外場（點餐、送餐）', '餐飲內場（備料、廚房）', '門市銷售、收銀',
+    '業務、推銷', '行政、文書', '會計、記帳', '清潔、房務', '照顧服務（長照、看護）', '保母、托育', '美容、美髮', '農業', '倉儲、物流、送貨',
+    '教育、幼教、安親', '自己做生意'];
+  var WANTS = ['門市銷售', '收銀員', '餐飲外場', '餐飲內場', '櫃台接待', '客服', '行政文書', '照顧服務', '保母或課後照顧', '清潔或房務', '理貨或包裝',
+    '網拍小幫手', '社區據點助理', '自己開店或接案'];
+  function worked() { return state.a.years !== 'none'; }   // 還沒答年資先算有工作過：題數只會變少，不會越填越多
+  var QS = [
+    { id: 'name', type: 'text', req: true, title: '你的姓名', hint: '跟身分證上的寫法一樣' },
+    { id: 'idno', type: 'text', req: true, title: '身分證字號', hint: '看身分證正面：1 個英文字母，加 9 個數字' },
+    { id: 'birth', type: 'birth', title: '出生日期', hint: '民國幾年、幾月、幾日' },
+    { id: 'phone', type: 'text', req: true, tel: true, title: '手機號碼', hint: '10 個數字，09 開頭' },
+    { id: 'email', type: 'text', req: true, email: true, title: '你手機收得到信的 Email',
+      hint: '等一下台灣就業通會寄信到這裡。不確定是哪一個，可以打開手機的信箱看看。' },
+    { id: 'addr', type: 'addr', title: '現在住的地址', hint: '要收得到信的地址' },
+    { id: 'edu', type: 'single', title: '你讀到哪裡畢業？', opts: ['國小', '國中', '高中', '高職', '專科', '大學', '碩士', '博士'] },
+    { id: 'disab', type: 'single', title: '你有身心障礙證明嗎？', hint: '有的話，是哪一類等一下在現場選', opts: ['沒有', '有'] },
+    { id: 'years', type: 'years', title: '以前有領薪水的工作，加起來大約幾年？' },
+    { id: 'jobKind', type: 'single', show: worked, title: '最後一份工作是哪一類？', hint: '都不像的話，選最接近的', opts: JOB_KINDS },
+    { id: 'company', type: 'text', req: true, show: worked, title: '那家公司或店叫什麼？', hint: '記不清楚寫大概，例如：岡山的成衣工廠' },
+    { id: 'jobTitle', type: 'text', show: worked, title: '你在那裡做什麼職位？', hint: '例如：作業員、店員。不知道怎麼寫可以按「跳過」' },
+    { id: 'jobDesc', type: 'text', lines: true, show: worked, title: '平常主要做什麼？', hint: '例如：包裝、點餐。不知道怎麼寫可以按「跳過」' },
+    { id: 'from', type: 'ym', show: worked, title: '這份工作哪一年開始做？' },
+    { id: 'to', type: 'end', show: worked, title: '做到哪一年？' },
+    { id: 'want', type: 'single', title: '之後想做什麼工作？', hint: '選一個最想做的', opts: WANTS },
+    { id: 'pc', type: 'single', title: '你會用電腦嗎？', opts: ['不會', '會'] },
+    { id: 'pcSkills', type: 'multi', req: true, show: function () { return state.a.pc === '會'; }, title: '電腦會哪些？', hint: '可以選好幾個，選好按「下一題」',
+      opts: [{ t: '開機、用滑鼠', o: '電腦基本操作' }, { t: '打字、用 Word', o: '文書處理' }, { t: '上網、收信', o: '網際網路' },
+        { t: '做網頁', o: '網頁編輯' }, { t: '用 Excel 等軟體', o: '商業軟體' }, { t: '寫程式', o: '程式設計' }] },
+    { id: 'vehicle', type: 'single', title: '你自己有機車或汽車嗎？', hint: '家人接送、坐公車，選「沒有」',
+      opts: [{ t: '有', o: '自備' }, { t: '沒有', o: '無' }] },
+    { id: 'license', type: 'single', title: '你有什麼駕照？', hint: '機車、汽車都有，選「汽車」',
+      opts: [{ t: '沒有', o: '無' }, { t: '輕型機車', n: '50cc 以下', o: '輕型機車駕照' }, { t: '普通重型機車', o: '重型機車駕照' }, { t: '汽車', o: '普通小型車駕照' }] },
+    { id: 'retire', type: 'single', title: '你退休了嗎？',
+      opts: [{ t: '還沒退休', o: '未退休' }, { t: '退休了，有在領老年年金或退休金', o: '已退休並領取老年年金或退休金者' },
+        { t: '退休了，還沒開始領', o: '已退休尚未領取老年年金或退休金者' }] }
+  ];
+  var BY = {};
+  QS.forEach(function (q) {
+    BY[q.id] = q;
+    if (q.opts) q.opts = q.opts.map(function (o) {
+      if (typeof o !== 'string') return o;
+      var m = /^(.+?)（(.+)）$/.exec(o);   // 「工廠作業員（組裝、包裝、品檢）」：畫面分成主字＋小字，送出整串
+      return m ? { t: m[1], n: m[2], o: o } : { t: o };
+    });
+  });
+  function shown() { return QS.filter(function (q) { return !q.show || q.show(); }); }
+
+  // ---------- 日期 ----------
+  var NOW = new Date(), NOW_Y = NOW.getFullYear(), NOW_M = NOW.getMonth() + 1, ROC_NOW = NOW_Y - 1911;
+  function pad(n) { return ('0' + n).slice(-2); }
+  function range(a, b) { var r = []; for (var i = a; i <= b; i++) r.push(i); return r; }
+  function daysIn(rocY, m) { return rocY && m ? new Date(+rocY + 1911, +m, 0).getDate() : 31; }
+
+  // ---------- 狀態（存在這支手機） ----------
+  // pos：'start'、題目 id、'review'、'done'、'redo'；a：答案；seen：走過的題；warned：提醒過的值；ret：從確認頁按「改」進來；num：號碼
+  var state = load();
+  var err = '', warn = '', sending = false, shownAt = 0;
+  function blank() { return { v: 1, pos: 'start', a: {}, seen: {}, warned: {}, ret: false, num: '' }; }
+  function load() {
+    try {
+      var s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (s && s.v === 1 && s.a && typeof s.a === 'object') { s.seen = s.seen || {}; s.warned = s.warned || {}; return s; }
+    } catch (e) { /* 壞掉、不給用：重新開始 */ }
+    return blank();
+  }
+  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* 私密模式：照樣能填完 */ } }
+
+  // ---------- 小工具 ----------
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function half(s) { return String(s || '').replace(/[０-９Ａ-Ｚａ-ｚ＠．]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }); }
+  function digits(s) { return half(s).replace(/\D/g, ''); }
+  function idNo() { return half(state.a.idno).replace(/[\s\u3000\-]/g, '').toUpperCase(); }
+  function email() { return half(state.a.email).replace(/[\s\u3000]+/g, ''); }
+  function clean(s) { return String(s || '').replace(/[\r\n\u2028\u2029]+/g, ' ').replace(/[ \t\u3000]+/g, ' ').trim(); }
+  function optOf(q, t) { return q.opts.filter(function (o) { return o.t === t; })[0]; }
+  function outT(o) { return o.o || o.t; }
+  function isSel(q, o) { var v = state.a[q.id]; return q.type === 'multi' ? Array.isArray(v) && v.indexOf(o.t) >= 0 : v === o.t; }
+  function idChecksumOk(id) {   // 身分證、新式居留證：第一個字母換成 10–35，加權總和要被 10 整除
+    var n = 'ABCDEFGHJKLMNPQRSTUVXYWZIO'.indexOf(id.charAt(0)) + 10, sum = Math.floor(n / 10) + (n % 10) * 9;
+    for (var i = 1; i < 9; i++) sum += +id.charAt(i) * (9 - i);
+    return (sum + +id.charAt(9)) % 10 === 0;
+  }
+  function emailOdd(e) {   // 常見打錯：網域結尾 .con／.cm／.om、gmail 拼錯、有中文
+    return /[^\x21-\x7e]/.test(e) || !/\.[a-z]{2,}$/i.test(e) || /\.(con|cm|om|comm|cmo)$/i.test(e) ||
+      /@(gmial|gmai|gamil|gmaill|gmali|gnail|yaho|yahooo|hotmial|hotmal)\./i.test(e) || /@gmail\.(?!com$)/i.test(e);
+  }
+  function ymOut(ym, unknownMonth) {   // {y:民國, m:'1'…'12'／'x'} → 西元 YYYY-MM
+    var y = +ym.y + 1911, m = ym.m === 'x' ? unknownMonth : +ym.m;
+    if (y === NOW_Y && m > NOW_M) m = NOW_M;
+    return y + '-' + pad(m);
+  }
+  function rocText(ym) { return '民國 ' + ym.y + ' 年' + (ym.m === 'x' ? '（月份不記得）' : ' ' + ym.m + ' 月'); }
+
+  // ---------- 檢查：擋（err）＝空白或雲端一定不收；提醒（warn）＝提醒一次，再按一次照樣過 ----------
+  function check(q) {
+    var a = state.a[q.id];
+    switch (q.id) {
+      case 'name': return clean(a) ? {} : { err: '請寫你的姓名' };
+      case 'idno':
+        var id = idNo();
+        if (!id) return { err: '請寫身分證字號' };
+        if (!/^[A-Z]\d{9}$/.test(id)) return { err: '身分證字號是 1 個英文字母加 9 個數字，請對著身分證再看一下' };
+        return idChecksumOk(id) ? {} : { warn: '這個身分證字號好像有一個字不對，請對著身分證再看一次。確定沒錯，再按一次「' + nextLabel() + '」。', sig: id };
+      case 'birth':
+        if (!a || !a.y || !a.m || !a.d) return { err: '請把年、月、日都選好' };
+        if (+a.d > daysIn(a.y, a.m)) return { err: a.m + ' 月沒有 ' + a.d + ' 日，請再看一下' };
+        return {};
+      case 'phone': return /^09\d{8}$/.test(digits(a)) ? {} : { err: digits(a) ? '手機號碼要 09 開頭、10 個數字，請再看一下' : '請寫手機號碼' };
+      case 'email':
+        var e = email();
+        if (!e) return { err: '請寫 Email' };
+        if (!/^[^@]+@[^@]+\.[^@]+$/.test(e)) return { err: 'Email 要有「@」和「.」，請再看一下' };
+        return emailOdd(e) ? { warn: '這個 Email 好像有打錯的地方（例如 gmail.com 拼錯）。請再看一次；確定沒錯，再按一次「' + nextLabel() + '」。', sig: e } : {};
+      case 'addr':
+        if (!a || !a.city) return { err: '請選縣市' };
+        if (!a.dist) return { err: '請選區（鄉、鎮）' };
+        return clean(a.detail) ? {} : { err: '請寫路、巷、號（幾樓）' };
+      case 'years': return a ? {} : { err: '請選一個' };
+      case 'company': return clean(a) ? {} : { err: '請寫公司或店的名字；記不清楚寫大概就好' };
+      case 'from':
+        if (!a || !a.y) return { err: '請選哪一年開始' };
+        return a.m ? {} : { err: '請選幾月；不記得就選「不記得」' };
+      case 'to':
+        if (a && a.now) return {};
+        if (!a || !a.y) return { err: '請按「還在做」，或選做到哪一年' };
+        if (!a.m) return { err: '請選幾月；不記得就選「不記得」' };
+        var s = state.a.from;
+        if (s && s.y && s.m && ymOut(a, 12) < ymOut(s, 1)) return { warn: '結束的時間比開始還早，請再看一下。確定沒錯，再按一次「' + nextLabel() + '」。', sig: JSON.stringify([a, s]) };
+        return {};
+      case 'pcSkills': return Array.isArray(a) && a.length ? {} : { err: '請至少選一個' };
+    }
+    if (q.type === 'single') return a && optOf(q, a) ? {} : { err: '請選一個' };
+    return {};
+  }
+  function done(q) {   // 確認頁按「改」之後：還沒走過、或必填還空著的題要補
+    if (!state.seen[q.id]) return false;
+    return !check(q).err;
+  }
+
+  // ---------- 送出的答案（規格第 3 節的鍵） ----------
+  function answers() {
+    var a = state.a, out = {
+      '姓名': clean(a.name), '身分證字號': idNo(),
+      '生日': (+a.birth.y + 1911) + '-' + pad(a.birth.m) + '-' + pad(a.birth.d),
+      '手機': digits(a.phone), 'Email': email(),
+      '通訊地址': { '縣市': a.addr.city, '區': a.addr.dist, '詳細': clean(a.addr.detail) },
+      '教育程度': a.edu, '身心障礙': a.disab === '有',
+      '工作年資': a.years === 'none' ? { '年': 0, '月': 0 } : a.years === 'lt1' ? { '年': 0, '月': 6 } : { '年': +a.years, '月': 0 },
+      '最後工作': null,
+      '想做': a.want,
+      '電腦': a.pc === '會' ? BY.pcSkills.opts.filter(function (o) { return isSel(BY.pcSkills, o); }).map(outT) : [],
+      '汽機車': outT(optOf(BY.vehicle, a.vehicle)), '駕照': outT(optOf(BY.license, a.license)), '退休身分': outT(optOf(BY.retire, a.retire))
+    };
+    if (worked()) out['最後工作'] = { '類別': outT(optOf(BY.jobKind, a.jobKind)), '公司': clean(a.company), '職稱': clean(a.jobTitle), '內容': clean(a.jobDesc),
+      '起': ymOut(a.from, 1), '迄': a.to.now ? '' : ymOut(a.to, 12) };
+    return out;
+  }
+  function display(q) {   // 確認頁上的答案
+    var a = state.a[q.id];
+    switch (q.type) {
+      case 'birth': return '民國 ' + a.y + ' 年 ' + a.m + ' 月 ' + a.d + ' 日';
+      case 'addr': return a.city + a.dist + clean(a.detail);
+      case 'years': return yearsLabel(a);
+      case 'ym': return rocText(a);
+      case 'end': return a.now ? '還在做' : rocText(a);
+      case 'multi': return q.opts.filter(function (o) { return isSel(q, o); }).map(function (o) { return o.t; }).join('、');
+      case 'single': var o = optOf(q, a); return o.t + (o.n ? '（' + o.n + '）' : '');
+    }
+    if (q.id === 'idno') return idNo();
+    if (q.id === 'phone') return digits(a);
+    if (q.id === 'email') return email();
+    return clean(a) || '（沒有寫）';
+  }
+  function yearsLabel(v) { return v === 'none' ? '沒有工作過' : v === 'lt1' ? '未滿 1 年' : v + ' 年'; }
+
+  // ---------- 畫面 ----------
+  var app = document.getElementById('app');
+  function banner() {
+    if (!API) return '<p class="tm">測試模式：資料不會送出</p>';
+    return LOCAL ? '<p class="tm">練習畫面：資料只送到這台電腦的練習後台</p>' : '';
+  }
+  function render(focus) {
+    shownAt = Date.now();
+    var p = state.pos, h;
+    if (!REGION) h = '<h1>這個連結不完整，請工作人員重新給一次</h1>';
+    else if (p === 'start') h = startHTML();
+    else if (p === 'review') h = reviewHTML();
+    else if (p === 'done') h = doneHTML();
+    else if (p === 'redo') h = redoHTML();
+    else h = questionHTML(BY[p]);
+    app.innerHTML = (p === 'done' ? '' : banner()) + h;
+    if (focus !== false) {
+      var t = app.querySelector('.qt, h1, .num');
+      if (t) { t.setAttribute('tabindex', '-1'); t.focus({ preventScroll: true }); }
+      window.scrollTo(0, 0);
+    }
+  }
+  function startHTML() {
+    var started = Object.keys(state.a).length > 0;
+    // 開頭頁只有標題和按鈕（Tomi 11/19：「求職登記然後開始，這樣就好了」，地區、輔助文字都拿掉）
+    return '<h1>求職登記</h1>' +
+      '<button type="button" class="btn" data-act="go">' + (started ? '接著填' : '開始') + '</button>';
+  }
+  function nextLabel() { return state.ret ? '改好了' : '下一題'; }
+  function topHTML(label, pct) {
+    return '<div class="top"><button type="button" class="back" data-act="back">‹ 上一題</button>' +
+      '<span class="count">' + label + '</span></div>' +
+      '<div class="bar" aria-hidden="true"><span style="width:' + pct + '%"></span></div>';
+  }
+  function selectHTML(id, label, list, val, srLabel) {   // list：[[值, 字]…]
+    var h = '<label class="flabel' + (srLabel ? ' sr' : '') + '" for="' + id + '">' + esc(label) + '</label><select class="field" id="' + id + '"><option value="">請選</option>';
+    list.forEach(function (x) { h += '<option value="' + esc(x[0]) + '"' + (String(val || '') === String(x[0]) ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; });
+    return h + '</select>';
+  }
+  function monthsUpTo(rocY) { return range(1, +rocY === ROC_NOW ? NOW_M : 12).map(function (m) { return [m, m + ' 月']; }); }
+  function ymFields(prefix, v, fromY) {
+    var years = range(fromY, ROC_NOW).reverse().map(function (y) { return [y, '民國 ' + y + ' 年（' + (y + 1911) + '）']; });
+    return '<div class="ym">' + selectHTML(prefix + 'Y', '哪一年', years, v.y) +
+      selectHTML(prefix + 'M', '幾月', monthsUpTo(v.y).concat([['x', '不記得']]), v.m) + '</div>';
+  }
+  function questionHTML(q) {
+    var list = shown(), i = list.indexOf(q), a = state.a[q.id], h;
+    h = topHTML('第 ' + (i + 1) + ' 題／共 ' + list.length + ' 題', Math.round(i / list.length * 100)) +
+      '<h2 class="qt">' + esc(q.title) + '</h2>' + (q.hint ? '<p class="hint">' + esc(q.hint) + '</p>' : '');
+    var nextBtn = true;
+    if (q.type === 'text') {
+      h += '<label class="flabel sr" for="txt">' + esc(q.title) + '</label>' + (q.lines
+        ? '<textarea class="field" id="txt" rows="4" maxlength="200">' + esc(a || '') + '</textarea>'
+        : '<input class="field" id="txt" ' + (q.tel ? 'type="tel" inputmode="tel" autocomplete="tel" maxlength="20"'
+          : q.email ? 'type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="100"'
+          : q.id === 'idno' ? 'type="text" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" maxlength="14"'
+          : q.id === 'name' ? 'type="text" autocomplete="name" maxlength="50"' : 'type="text" maxlength="100"') +
+        ' value="' + esc(a || '') + '">');
+    } else if (q.type === 'birth') {
+      var b = a || {};
+      h += '<div class="row3"><div>' + selectHTML('bY', '民國幾年', range(20, ROC_NOW - 15).map(function (y) { return [y, y + ' 年']; }), b.y) + '</div>' +
+        '<div>' + selectHTML('bM', '幾月', range(1, 12).map(function (m) { return [m, m + ' 月']; }), b.m) + '</div>' +
+        '<div>' + selectHTML('bD', '幾日', range(1, daysIn(b.y, b.m)).map(function (d) { return [d, d + ' 日']; }), b.d) + '</div></div>';
+    } else if (q.type === 'addr') {
+      var ad = a || {}, mine = REGIONS[REGION].cities;
+      var opt = function (c) { return '<option value="' + c + '"' + (ad.city === c ? ' selected' : '') + '>' + c + '</option>'; };
+      h += '<label class="flabel" for="aC">縣市</label><select class="field" id="aC"><option value="">請選</option>' +
+        '<optgroup label="這一區">' + mine.map(opt).join('') + '</optgroup><optgroup label="其他縣市">' +
+        AREAS.map(function (x) { return x[0]; }).filter(function (c) { return mine.indexOf(c) < 0; }).map(opt).join('') + '</optgroup></select>';
+      if (ad.city) h += selectHTML('aD', '區（鄉、鎮）', DISTS[ad.city].map(function (d) { return [d, d]; }), ad.dist);
+      h += '<label class="flabel" for="aT">路、巷、號、樓</label><input class="field" id="aT" type="text" autocomplete="off" maxlength="100" placeholder="例如：光復路一段100號3樓" value="' + esc(ad.detail || '') + '">';
+    } else if (q.type === 'years') {
+      h += selectHTML('yrs', q.title, [['none', '沒有工作過'], ['lt1', '未滿 1 年']].concat(range(1, 50).map(function (n) { return [n, n + ' 年']; })), a, true);
+    } else if (q.type === 'ym') {
+      h += ymFields('s', a || {}, birthRoc() + 12);
+    } else if (q.type === 'end') {
+      var e = a || {}, st = state.a.from || {};
+      h += '<div class="opts single" role="radiogroup" aria-label="' + esc(q.title) + '"><button type="button" class="opt" role="radio" aria-checked="' + !!e.now + '" data-act="stillWork">' +
+        '<span class="mark">' + CHECK + '</span><span class="t">現在還在做</span></button></div>' +
+        '<p class="or">已經沒做了，做到：</p>' + ymFields('e', e.now ? {} : e, +st.y || birthRoc() + 12);
+    } else {
+      h += '<div class="opts ' + q.type + '" role="' + (q.type === 'single' ? 'radiogroup' : 'group') + '" aria-label="' + esc(q.title) + '">';
+      q.opts.forEach(function (o, k) {
+        h += '<button type="button" class="opt" role="' + (q.type === 'single' ? 'radio' : 'checkbox') + '" aria-checked="' + isSel(q, o) + '" data-opt="' + k + '">' +
+          '<span class="mark">' + CHECK + '</span><span class="t">' + esc(o.t) + (o.n ? ' <span class="note">（' + esc(o.n) + '）</span>' : '') + '</span></button>';
+      });
+      h += '</div>';
+      nextBtn = q.type === 'multi' || !!a;   // 單選：點了自動下一題；回來改的時候才有按鈕
+    }
+    if (err) h += '<div class="box err" role="alert"><p>' + esc(err) + '</p></div>';
+    if (warn) h += '<div class="box warn" role="alert"><p>' + esc(warn) + '</p></div>';
+    if (nextBtn) {
+      var skip = q.type === 'text' && !q.req && !clean(a) && !state.ret;
+      h += '<button type="button" class="btn' + (skip ? ' btn2' : '') + '" data-act="next" id="nextBtn">' + (skip ? '跳過' : nextLabel()) + '</button>';
+    }
+    return h;
+  }
+  function birthRoc() { return state.a.birth && +state.a.birth.y ? +state.a.birth.y : 20; }
+  function reviewHTML() {
+    var h = topHTML('最後一步', 100) + '<h2 class="qt">確認資料</h2><p class="hint">請一題一題看過，不對的按「改」。</p><ul class="rv">';
+    shown().forEach(function (q) {
+      var ok = !check(q).err;
+      h += '<li><div class="rt"><div class="rq">' + esc(q.title) + '</div><div class="ra">' + (ok ? esc(display(q)) : '<span style="color:var(--err)">還沒填</span>') + '</div></div>' +
+        '<button type="button" class="edit" data-edit="' + q.id + '">改</button></li>';
+    });
+    h += '</ul>';
+    if (err) h += '<div class="box err" role="alert"><p>' + esc(err) + '</p></div>';
+    h += '<button type="button" class="btn" data-act="send"' + (sending ? ' aria-disabled="true"' : '') + '>' + (sending ? '正在送出，請稍等…' : '都對了，送出') + '</button>';
+    return h;
+  }
+  function doneHTML() {
+    return '<div class="donewrap"><p class="num" aria-label="號碼 ' + esc(state.num.split('').join(' ')) + '">' + esc(state.num) + '</p>' +
+      '<p class="numtxt">輪到你的時候，<br>把這組號碼給工作人員看</p>' +
+      '<button type="button" class="linkbtn" data-act="redo">重新填一份</button></div>';
+  }
+  function redoHTML() {
+    return '<h1>要重新填一份嗎？</h1><p class="lead">手機上的號碼 ' + esc(state.num) + ' 會清掉，要從頭再填一次。</p>' +
+      '<button type="button" class="btn" data-act="keep">不要，回到號碼</button>' +
+      '<button type="button" class="btn btn2" data-act="wipe">確定，重新填一份</button>';
+  }
+
+  // ---------- 動作 ----------
+  function go(pos) { err = ''; warn = ''; state.pos = pos; save(); render(); }
+  function keep() {   // 把畫面上打的、選的字存起來
+    var q = BY[state.pos], v = function (id) { var el = document.getElementById(id); return el ? el.value : undefined; };
+    if (!q) return;
+    if (q.type === 'text') { if (v('txt') !== undefined) state.a[q.id] = v('txt'); }
+    else if (q.type === 'birth') state.a.birth = { y: v('bY'), m: v('bM'), d: v('bD') };
+    else if (q.type === 'addr') { var o = state.a.addr || {}; state.a.addr = { city: v('aC'), dist: v('aC') === o.city ? (v('aD') || '') : '', detail: v('aT') }; }
+    else if (q.type === 'years') state.a.years = v('yrs');
+    else if (q.type === 'ym') state.a.from = { y: v('sY'), m: v('sM') };
+    else if (q.type === 'end' && (v('eY') || v('eM') || !(state.a.to && state.a.to.now))) state.a.to = { y: v('eY'), m: v('eM') };
+  }
+  function after(q) {   // 下一個要去哪：照順序下一題；從確認頁進來的，去還沒補的那一題、都好了回確認頁
+    var list = shown(), i;
+    if (state.ret) {
+      for (i = 0; i < list.length; i++) if (!done(list[i])) return list[i].id;
+      state.ret = false;
+      return 'review';
+    }
+    i = list.indexOf(q);
+    return i >= 0 && i < list.length - 1 ? list[i + 1].id : 'review';
+  }
+  function next() {
+    var q = BY[state.pos];
+    keep();
+    var c = check(q);
+    if (c.err) { err = c.err; warn = ''; save(); render(false); focusField(); return; }
+    if (c.warn && state.warned[q.id] !== c.sig) { state.warned[q.id] = c.sig; err = ''; warn = c.warn; save(); render(false); return; }
+    state.seen[q.id] = true;
+    go(after(q));
+  }
+  function back() {
+    keep();
+    var list = shown(), i = state.pos === 'review' ? list.length : list.indexOf(BY[state.pos]);
+    go(i <= 0 ? 'start' : list[i - 1].id);
+  }
+  function focusField() { var f = app.querySelector('#txt, select.field, input.field'); if (f && !f.value) f.focus(); }
+  function pick(q, k) {
+    var o = q.opts[k];
+    err = ''; warn = '';
+    if (q.type === 'single') {
+      state.a[q.id] = o.t; save(); render(false);
+      setTimeout(function () { if (state.pos === q.id) next(); }, 250);   // 點了自動下一題（先讓她看到勾起來）
+      return;
+    }
+    var v = Array.isArray(state.a[q.id]) ? state.a[q.id].slice() : [], at = v.indexOf(o.t);
+    if (at >= 0) v.splice(at, 1); else v.push(o.t);
+    state.a[q.id] = v; save(); render(false);
+  }
+  function send() {
+    if (sending) return;
+    var bad = shown().filter(function (q) { return check(q).err; })[0];
+    if (bad) { state.ret = true; state.pos = bad.id; err = check(bad).err; save(); render(); return; }
+    sending = true; err = ''; render(false);
+    var body = { '分署': REGION, '答案': answers() };
+    var p;
+    if (!API) { console.log('測試模式：要送的資料', body); p = Promise.resolve({ ok: true, '號碼': '0000' }); }   // eslint-disable-line no-console
+    else {
+      var ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      var timer = setTimeout(function () { if (ctl) ctl.abort(); }, WAIT_MS);
+      p = fetch(API + '/api/jobs/intake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        signal: ctl ? ctl.signal : undefined })
+        .then(function (r) { return r.json().catch(function () { return { ok: false }; }); })
+        .finally(function () { clearTimeout(timer); });
+    }
+    p.then(function (res) {
+      sending = false;
+      var num = res && String(res['號碼'] || '');
+      if (!res || !res.ok || !/^\d{4}$/.test(num)) {
+        err = String((res && (res['代碼'] ? res['錯誤'] : res['訊息'])) || '現在送不出去').replace(/[。．.！!\s]+$/, '') + '。資料還在手機裡，可以按「改」修正，或再按一次「都對了，送出」。';
+        render(false); return;
+      }
+      state.num = num; state.pos = 'done'; save(); render();
+    }, function () {
+      sending = false;
+      err = '網路好像斷了，資料沒有送出去，但還留在手機裡。請確認手機有網路（Wi-Fi 或行動數據），再按一次「都對了，送出」。';
+      render(false);
+    });
+  }
+
+  app.addEventListener('click', function (ev) {
+    var b = ev.target.closest('button');
+    if (!b || Date.now() - shownAt < GUARD_MS) return;
+    var act = b.getAttribute('data-act'), k = b.getAttribute('data-opt'), ed = b.getAttribute('data-edit');
+    if (k !== null && BY[state.pos]) { pick(BY[state.pos], +k); return; }
+    if (ed) { state.ret = true; go(ed); return; }
+    if (act === 'go') { state.ret = false; var first = shown().filter(function (q) { return !state.seen[q.id]; })[0]; go(first ? first.id : 'review'); }
+    else if (act === 'back') back();
+    else if (act === 'next') next();
+    else if (act === 'send') send();
+    else if (act === 'stillWork') { state.a.to = { now: true }; save(); render(false); setTimeout(function () { if (state.pos === 'to') next(); }, 250); }
+    else if (act === 'redo') go('redo');
+    else if (act === 'keep') go('done');
+    else if (act === 'wipe') { state = blank(); go('start'); }
+  });
+  app.addEventListener('input', function (ev) {
+    keep(); save();
+    var q = BY[state.pos], b = document.getElementById('nextBtn');
+    if (q && q.type === 'text' && !q.req && b && !state.ret) { var has = !!clean(state.a[q.id]); b.textContent = has ? '下一題' : '跳過'; b.classList.toggle('btn2', !has); }
+    if (ev.target.tagName === 'SELECT') {   // 換了年、月、縣市：日、月、區的清單跟著換
+      var id = ev.target.id;
+      if (id === 'eY' || id === 'eM') { if (state.a.to) delete state.a.to.now; }
+      if (id === 'sY' && state.a.from && +state.a.from.y === ROC_NOW && +state.a.from.m > NOW_M) state.a.from.m = '';
+      if (id === 'eY' && state.a.to && +state.a.to.y === ROC_NOW && +state.a.to.m > NOW_M) state.a.to.m = '';
+      if (id === 'bY' || id === 'bM' || id === 'aC' || id === 'sY' || id === 'eY' || id === 'eM') {
+        save(); render(false);
+        var el = document.getElementById(id === 'aC' ? 'aD' : id); if (el) el.focus();
+      } else if (id === 'yrs' || id === 'eM') { save(); }
+    }
+  });
+  app.addEventListener('keydown', function (ev) {   // 一行的打字題按 Enter＝下一題
+    if (ev.key === 'Enter' && ev.target.tagName === 'INPUT') { ev.preventDefault(); next(); }
+  });
+  if (state.pos !== 'start' && state.pos !== 'review' && state.pos !== 'done' && state.pos !== 'redo' && !(BY[state.pos] && shown().indexOf(BY[state.pos]) >= 0)) state.pos = 'start';
+  if (state.pos === 'redo') state.pos = 'done';
+  if (state.pos === 'done' && !/^\d{4}$/.test(state.num || '')) state.pos = 'start';
+  render();
+  // 先叫醒雲端（雲端閒置會睡著，第一個請求要等它開機約 10 秒；同 ../line/index.html）
+  if (REGION && API && !LOCAL && state.pos !== 'done') { try { fetch(API + '/health', { mode: 'no-cors', cache: 'no-store' }).catch(function () {}); } catch (e) { /* 略過 */ } }
+})();
+</script>
+</body>
+</html>
