@@ -160,8 +160,7 @@ select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg 
     { id: 'idno', type: 'text', req: true, title: '身分證字號', hint: '看身分證正面：1 個英文字母，加 9 個數字' },
     { id: 'birth', type: 'birth', title: '出生日期', hint: '民國幾年、幾月、幾日' },
     { id: 'phone', type: 'text', req: true, tel: true, title: '手機號碼', hint: '10 個數字，09 開頭' },
-    { id: 'email', type: 'text', req: true, email: true, title: '你手機收得到信的 Email',
-      hint: '等一下台灣就業通會寄信到這裡。不確定是哪一個，可以打開手機的信箱看看。' },
+    // Email 不在手機問（Tomi 11/19：長輩多半不知道自己的 Email，亂打反而麻煩）→ 到筆電前工作人員看她手機的信箱，在開履歷程式打
     { id: 'addr', type: 'addr', title: '現在住的地址', hint: '要收得到信的地址' },
     { id: 'edu', type: 'single', title: '你讀到哪裡畢業？', opts: ['國小', '國中', '高中', '高職', '專科', '大學', '碩士', '博士'] },
     { id: 'disab', type: 'single', title: '你有身心障礙證明嗎？', hint: '有的話，是哪一類等一下在現場選', opts: ['沒有', '有'] },
@@ -272,9 +271,11 @@ select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg 
         if (!a || !a.y) return { err: '請選哪一年開始' };
         return a.m ? {} : { err: '請選幾月；不記得就選「不記得」' };
       case 'to':
-        if (a && a.now) return {};
-        if (!a || !a.y) return { err: '請按「還在做」，或選做到哪一年' };
+        if (!a || !a.y) return { err: '請選做到哪一年' };
         if (!a.m) return { err: '請選幾月；不記得就選「不記得」' };
+        // 離開工作要半年以上才符合補助（切結書「退出職場已逾一百八十日」）：點錯成最近的年月就擋（Tomi 11/19 指定要擋，要離現在 8 個月以上：「6 個月太緊繃了…至少要 8 個月」）
+        var endYM = ymOut(a, 12).split('-');
+        if (NOW_Y * 12 + NOW_M - (+endYM[0] * 12 + +endYM[1]) < 8) return { err: '做到的時間離現在不到 8 個月。請再看一下，是不是選錯年或月了？' };
         var s = state.a.from;
         if (s && s.y && s.m && ymOut(a, 12) < ymOut(s, 1)) return { warn: '結束的時間比開始還早，請再看一下。確定沒錯，再按一次「' + nextLabel() + '」。', sig: JSON.stringify([a, s]) };
         return {};
@@ -293,7 +294,7 @@ select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg 
     var a = state.a, out = {
       '姓名': clean(a.name), '身分證字號': idNo(),
       '生日': (+a.birth.y + 1911) + '-' + pad(a.birth.m) + '-' + pad(a.birth.d),
-      '手機': digits(a.phone), 'Email': email(),
+      '手機': digits(a.phone),
       '通訊地址': { '縣市': a.addr.city, '區': a.addr.dist, '詳細': clean(a.addr.detail) },
       '教育程度': a.edu, '身心障礙': a.disab === '有',
       '工作年資': a.years === 'none' ? { '年': 0, '月': 0 } : a.years === 'lt1' ? { '年': 0, '月': 6 } : { '年': +a.years, '月': 0 },
@@ -303,7 +304,7 @@ select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg 
       '汽機車': outT(optOf(BY.vehicle, a.vehicle)), '駕照': outT(optOf(BY.license, a.license)), '退休身分': outT(optOf(BY.retire, a.retire))
     };
     if (worked()) out['最後工作'] = { '類別': outT(optOf(BY.jobKind, a.jobKind)), '公司': clean(a.company), '職稱': clean(a.jobTitle), '內容': clean(a.jobDesc),
-      '起': ymOut(a.from, 1), '迄': a.to.now ? '' : ymOut(a.to, 12) };
+      '起': ymOut(a.from, 1), '迄': ymOut(a.to, 12) };
     return out;
   }
   function display(q) {   // 確認頁上的答案
@@ -313,7 +314,7 @@ select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg 
       case 'addr': return a.city + a.dist + clean(a.detail);
       case 'years': return yearsLabel(a);
       case 'ym': return rocText(a);
-      case 'end': return a.now ? '還在做' : rocText(a);
+      case 'end': return rocText(a);
       case 'multi': return q.opts.filter(function (o) { return isSel(q, o); }).map(function (o) { return o.t; }).join('、');
       case 'single': var o = optOf(q, a); return o.t + (o.n ? '（' + o.n + '）' : '');
     }
@@ -401,9 +402,8 @@ select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg 
       h += ymFields('s', a || {}, birthRoc() + 12);
     } else if (q.type === 'end') {
       var e = a || {}, st = state.a.from || {};
-      h += '<div class="opts single" role="radiogroup" aria-label="' + esc(q.title) + '"><button type="button" class="opt" role="radio" aria-checked="' + !!e.now + '" data-act="stillWork">' +
-        '<span class="mark">' + CHECK + '</span><span class="t">現在還在做</span></button></div>' +
-        '<p class="or">已經沒做了，做到：</p>' + ymFields('e', e.now ? {} : e, +st.y || birthRoc() + 12);
+      // 沒有「現在還在做」（Tomi 11/19：來上課的都是待業中，這個選項不合理）
+      h += ymFields('e', e.now ? {} : e, +st.y || birthRoc() + 12);
     } else {
       h += '<div class="opts ' + q.type + '" role="' + (q.type === 'single' ? 'radiogroup' : 'group') + '" aria-label="' + esc(q.title) + '">';
       q.opts.forEach(function (o, k) {
@@ -455,7 +455,7 @@ select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg 
     else if (q.type === 'addr') { var o = state.a.addr || {}; state.a.addr = { city: v('aC'), dist: v('aC') === o.city ? (v('aD') || '') : '', detail: v('aT') }; }
     else if (q.type === 'years') state.a.years = v('yrs');
     else if (q.type === 'ym') state.a.from = { y: v('sY'), m: v('sM') };
-    else if (q.type === 'end' && (v('eY') || v('eM') || !(state.a.to && state.a.to.now))) state.a.to = { y: v('eY'), m: v('eM') };
+    else if (q.type === 'end') state.a.to = { y: v('eY'), m: v('eM') };
   }
   function after(q) {   // 下一個要去哪：照順序下一題；從確認頁進來的，去還沒補的那一題、都好了回確認頁
     var list = shown(), i;
@@ -535,7 +535,6 @@ select.field{padding-right:52px;background-image:url("data:image/svg+xml,%3Csvg 
     else if (act === 'back') back();
     else if (act === 'next') next();
     else if (act === 'send') send();
-    else if (act === 'stillWork') { state.a.to = { now: true }; save(); render(false); setTimeout(function () { if (state.pos === 'to') next(); }, 250); }
     else if (act === 'redo') go('redo');
     else if (act === 'keep') go('done');
     else if (act === 'wipe') { state = blank(); go('start'); }
