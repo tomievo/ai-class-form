@@ -26,8 +26,8 @@ var ASK_INTRODUCER = false;
 var BATCH_REGIONS = false;
 // 舊發布設定保留相容；兩家公司都依通訊地址選文件，不再用此開關擋跨區（11/19）。
 var AREA_WARN_ONLY = false;
-// 申請文件、信封的下載按鈕（亞拿 11/17；公司設定 報名網頁.文件下載）：false＝做好頁照舊、列印站和我協助的學員沒有下載（正本、沒開的那一家）；
-// 發布.py 發給開了的那一家時把這一行換成 true（做好頁、列印站、我協助的學員每份文件的列印按鈕下面多一排「下載 PDF」）
+// 申請文件、信封的下載按鈕（亞拿 11/17；公司設定 報名網頁.文件下載）：false＝做好頁照舊、列印站沒有下載（正本、沒開的那一家）；
+// 發布.py 發給開了的那一家時把這一行換成 true（做好頁、列印站每份文件的列印按鈕下面多一排「下載 PDF」）
 var DOC_DOWNLOAD = true;
 // 下載 Word（公司設定 報名網頁.下載Word）：false＝沒有（正本、沒開的那一家）；true＝那一排多「下載 Word」（網頁把手上的 PDF 傳給雲端 /api/word 轉）。
 // DOC_DOWNLOAD 是 false 時這一行是 true 也當作關。發布.py 發給開了的那一家時把這一行換成 true
@@ -45,8 +45,7 @@ var 需要通關碼 = true;
     重新整理可以接著做；按「下一位學員」「今天印不了，先換下一位」或「重新填寫」才清掉（現場通關碼留著）
   - 列印站（網址加 #列印站，店裡接印表機的電腦設成書籤）：學員在自己手機上產好文件，現場人員在這裡點她的名字列印。
     手機、平板的列印頁會叫她去列印站；列印站拿到的 PDF 只放在記憶體，不存進這台電腦
-  - 我協助的學員（只有開了寫手代碼的那一家，KNOWN 202）：開始畫面多一顆，寫手代碼看自己協助報名、那一梯還沒開課的學員，
-    每位「列印申請文件」「印信封」（手機、電腦都可以）；共用的店裡碼看全部。PDF 一樣只放在記憶體
+  - 以前開始畫面有「我協助的學員」（KNOWN 202），2026-11-25 Tomi 說寫手、合作單位直接到後台看，拿掉了
 -->
 <style>
 :root{
@@ -346,36 +345,6 @@ p.cn{margin:6px 0 2px}
 .gdn .gnum{font-size:28px}
 .gqr{display:block;width:100%;max-width:560px;height:auto;margin:12px auto;border:3px solid var(--ink);image-rendering:pixelated}
 .gurl{display:block;width:100%;margin:8px 0;padding:8px 10px;border:2px solid var(--ink2);border-radius:10px;font-size:16px}
-/* 我協助的學員：寫手回報寄出、核准函（#388）：照要做的事分段（標題右邊寫幾位）、每張卡一顆大按鈕、小字按鈕也有 64px 高、
-   按下去在同一格確認（藍框；收到核准函是綠框）、記好那一格縮成綠框「✓ 已記下」；提醒字粗體＋深黃（不只靠顏色：句子本身講該做什麼） */
-.mst{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 8px}
-.mst .mn{font-size:22px;font-weight:700;color:var(--ink2);white-space:nowrap}
-.mcount{display:block;margin-top:2px;font-size:22px;font-weight:800;color:var(--warn)}
-.srow>.sname,.srow>.smeta{display:block}
-.mline{margin:4px 0 0;font-size:22px}
-.mdue{color:var(--warn);font-weight:800}
-.btn.mok{background:var(--ok);border-color:var(--ok)}
-.btn.mok:active{background:#14521f}
-.mlink{display:block;min-height:64px;padding:8px 4px;text-align:left;text-underline-offset:4px}
-.mconf{margin:14px 0 0;padding:14px 16px 12px;border:3px solid var(--pri);border-radius:14px;background:var(--pri-bg)}
-.mconf.okc{border-color:var(--ok);background:var(--ok-bg)}
-.mconf h3{margin:0 0 8px;font-size:26px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
-.mconf .field{min-height:64px}
-.mconf .btn{margin-top:14px}
-.mconf .mlink{margin:4px auto 0;text-align:center}
-.msmall{margin:10px 0 0;font-size:20px}
-.merr{margin:10px 0 0;font-size:22px;font-weight:800;color:var(--err)}
-.msaved{margin:0 0 20px;padding:14px 16px;border:3px solid var(--ok);border-radius:14px;background:var(--ok-bg);list-style:none}
-.msaved b{display:block;font-size:24px;font-weight:800;overflow-wrap:anywhere}
-.msaved span{font-size:20px;color:var(--ink2)}
-.mdone{list-style:none;margin:8px 0 0;padding:0}
-.mdone>li{padding:12px 0;border-bottom:2px solid #d6d6d1}
-.mdone>li.msaved{margin:12px 0;padding:14px 16px;border:3px solid var(--ok)}
-.ml1{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px 12px}
-.mwho{font-size:26px;font-weight:800;overflow-wrap:anywhere}
-.mwhat{font-size:20px;font-weight:700;color:var(--ink2)}
-.mwhat.mgood{color:var(--ok)}
-.mwhen{margin-top:2px;font-size:19px;color:var(--ink2)}
 </style>
 </head>
 <body>
@@ -412,7 +381,7 @@ p.cn{margin:6px 0 2px}
   var NO_ID_LINE = '身分證影本：' + NO_ID;
   var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
   var GUARD_MS = 400;    // 換畫面後這段時間內的點擊不算（防連點點到下一題）
-  var WAIT_MS = { batches: 45000, read: 120000, gen: 240000, recent: 45000, packet: 90000, judge: 20000, mine: 45000, word: 90000 };   // 讀梯次、讀取資料、產生申請文件、列印站的名單和文件、核對頁的預覽、我協助的學員名單、轉 Word 最多等多久，超過當沒成功
+  var WAIT_MS = { batches: 45000, read: 120000, gen: 240000, recent: 45000, packet: 90000, judge: 20000, word: 90000 };   // 讀梯次、讀取資料、產生申請文件、列印站的名單和文件、核對頁的預覽、轉 Word 最多等多久，超過當沒成功
   var MAX_EDGE = 1600, JPEG_Q = 0.8;    // 身分證照片：長邊 1600px、JPEG 0.8（v3 原樣）
   var DOC_EDGE = 2400, DOC_Q = 0.85;    // 勞保照片、截圖：長邊 2400px、JPEG 0.85（小字要看得清楚）
   var MAX_BYTES = 10 * 1024 * 1024;     // 每個檔最大 10MB
@@ -566,6 +535,29 @@ p.cn{margin:6px 0 2px}
   QS.concat([DUTY, LEAVE]).forEach(function (q) {
     if (q.opts) q.opts = q.opts.map(function (o) { return typeof o === 'string' ? { t: o } : o; });
   });
+  // 保健課（LINE 報名帶進來的人＝state.lineId 有值，11/25）：Tomi 11/24 定，一定要是她本人真實資料的只有五件事（工作經歷、個人資料、
+  // 戶籍與通訊地址、離開職場的原因、未來想做的工作），其他讓 AI 寫。所以 AI 課專用的四題不問（她在 LINE 答過的「想上課的原因」照樣列、照樣送）；
+  // 想做的工作換成 LINE 表單「學完想怎麼用這個技能」那題的選項，輸出的字跟 LINE 一樣（../表單/line/index.html）。資料表照舊每一行都有（buildText）
+  // 合作單位的代碼（partnerOn，11/25）進來的也是保健課：不用從 LINE 名單帶入就能新增一位學員。Tomi 11/25：問卷題不再問學員（雲端照事實
+  // 補合理的內容），只問事實——身分證（拍照或身分證欄位留空打字）、姓名手機、Email（選填）、通訊地址、勞保檔、梯次；最後一份工作照舊在
+  // 核對頁卡片上確認。其他題資料表照舊每一行都有（沒問的寫「（未填）」，雲端補）；LINE 帶進來、她在 LINE 答過的那幾題照樣列、照樣送
+  var HEALTH_ASK = ['idFront', 'idBack', 'idNum', 'idBirth', 'idAddr', 'name', 'phone', 'email', 'live', 'labor', 'introducer', 'batch'];
+  function isHealth() { return !!(state && state.lineId) || (partnerOn && !G_TOKEN); }   // 學員手機掃 QR（多人一起報名）不看這台記的代碼
+  function healthHide(q) { return isHealth() && HEALTH_ASK.indexOf(q.id) < 0 && !lineText(q); }
+  (function () {
+    var q = qById('wantJob'), ai = q.opts, aiTitle = q.title;
+    var health = [{ t: '到店裡做調理工作', o: '保健調理人員' }, { t: '自己接案或開工作室', o: '自行接案' },
+      { t: '加進原本的工作', n: '美容、美髮、照顧', o: '結合原有工作' }, other()];
+    Object.defineProperty(q, 'opts', { get: function () { return isHealth() ? health : ai; } });
+    Object.defineProperty(q, 'title', { get: function () { return isHealth() ? '學完想怎麼用這個技能？' : aiTitle; } });
+    q.optsFor = function (h) { return h ? health : ai; };   // 重新打開時的檢查（sanitize）：那時 state 還沒換成存的那一份，照存的 lineId 選
+  })();
+  // Email：保健課選填（申請表那一格留白也做得出文件，Working Rule 9），其他照舊必填
+  (function () {
+    var q = qById('email'), hint = q.hint;
+    Object.defineProperty(q, 'req', { get: function () { return !isHealth(); } });
+    Object.defineProperty(q, 'hint', { get: function () { return isHealth() ? '選填，沒有可以跳過。' : hint; } });
+  })();
   // 核對頁卡片的職稱：勞保上那筆／＋新增那份的選項（最後一個「其他」：她說的職稱照打）
   var TITLE_OPTS = TITLES.concat([{ t: '其他', f: { label: '照她說的寫職稱' } }]).map(function (o) { return typeof o === 'string' ? { t: o } : o; });
   var NG_TITLE_OPTS = NG_TITLES.concat([{ t: '其他', f: { label: '照她說的寫，做什麼工作' } }]).map(function (o) { return typeof o === 'string' ? { t: o } : o; });
@@ -645,7 +637,8 @@ p.cn{margin:6px 0 2px}
   function nameOf() { return textOf(qById('name')); }
 
   // ---------- 條件題（when；10/22 起沒有題目用，機制留著） ----------
-  function shown(q) { return (!q.when || q.when()) && !(q.skip && q.skip()) && (!G_TOKEN || G_QS.indexOf(q.id) >= 0); }   // 手機一起報名只問 G_QS 那幾題
+  function shownBase(q) { return (!q.when || q.when()) && !(q.skip && q.skip()) && (!G_TOKEN || G_QS.indexOf(q.id) >= 0); }   // 手機一起報名只問 G_QS 那幾題
+  function shown(q) { return shownBase(q) && !healthHide(q); }   // 保健課不問 AI 課那幾題（11/25；資料表照 shownBase 照舊輸出那幾行）
   // 從畫面位置 p 往 d（+1／-1）找第一個要問的題目；超出題目範圍就原樣回傳（0＝開場、N+1＝確認頁）
   function step(p, d) { while (p >= 1 && p <= N && !shown(QS[p - 1])) p += d; return p; }
   // 題號、題數只算要問的：前 upTo 個位置裡有幾題要問
@@ -664,7 +657,7 @@ p.cn{margin:6px 0 2px}
 
   // ---------- 她不想拍身分證（10/28；店裡電腦才有，手機一起報名沒有那顆按鈕；11/19 起寫手代碼、店裡碼的手機平板也有） ----------
   function noIdOn() { return state.noId === true; }
-  // 手機、平板：只給雲端認得的寫手代碼、共用的店裡碼（writerName 有值，同「我協助的學員」那顆）；學員手機（學員碼、QR 一起報名）、
+  // 手機、平板：只給雲端認得的寫手代碼、共用的店裡碼（writerName 有值）；學員手機（學員碼、QR 一起報名）、
   // 沒開寫手代碼的那一家（writerName 一直是空的）照舊沒有（11/19 Tomi：寫手用手機幫學員報名也要能留空，KNOWN 160）
   function noIdOk() { return !G_TOKEN && (!TOUCH || !!writerName); }
   // 身分證字號：1 個英文字母＋1 或 2＋8 個數字，檢查碼算得過（同 判讀.字號正確）
@@ -705,6 +698,7 @@ p.cn{margin:6px 0 2px}
   function sanitize(d) {
     var s = fresh();
     if (!d || typeof d !== 'object' || !d.a || typeof d.a !== 'object') return s;
+    var hl = (partnerOn && !G_TOKEN) || d.fill === true && /^lead-[A-Za-z0-9_-]{1,60}$/.test(str(d.lineId));   // 保健課（同下面 lineId 的條件、合作單位的代碼）：想做的工作照保健課的選項認
     QS.forEach(function (q) {
       var v = d.a[q.id];
       if (q.type === 'text') {
@@ -712,7 +706,7 @@ p.cn{margin:6px 0 2px}
       } else if (q.type === 'single') {
         if (typeof v === 'string' && optByT(q, v)) s.a[q.id] = v;
       } else if (q.type === 'multi' && isArr(v)) {
-        var a = v.filter(function (x) { return typeof x === 'string' && optByT(q, x); });
+        var a = v.filter(function (x) { return typeof x === 'string' && (q.optsFor ? optByT({ opts: q.optsFor(hl) }, x) : optByT(q, x)); });
         s.a[q.id] = q.max ? a.slice(0, q.max) : a;
       }
       var t = d.a[q.id + '_t'];
@@ -886,7 +880,7 @@ p.cn{margin:6px 0 2px}
   function buildText() {
     var lines = [HEADER, '填寫日期：' + today()];
     QS.forEach(function (q) {
-      if (!q.out || !shown(q)) return;   // 條件題沒問的不輸出
+      if (!q.out || !shownBase(q)) return;   // 條件題沒問的不輸出（保健課沒問的 AI 課那幾題照舊輸出，格式不變）
       if (q.type === 'range') {
         var r = rangeOf(q);
         lines.push(q.out + '：' + (r[0] || EMPTY), q.out2 + '：' + (r[1] || EMPTY));
@@ -961,6 +955,7 @@ p.cn{margin:6px 0 2px}
     }
     if (q.type === 'text') {
       var v = textOf(q);
+      if (q.kind === 'email' && !v && !q.req) return '';   // 保健課：Email 選填
       if (q.kind === 'tel') {
         if (!v) return '請寫你的手機號碼。';
         if (!/^09\d{8}$/.test(v)) return '號碼好像不對，請再看一下。手機號碼是 09 開頭、10 個數字。';
@@ -1023,28 +1018,40 @@ p.cn{margin:6px 0 2px}
   // 現場通關碼是「主辦」）。記在這台電腦（換寫手、通關碼不對就清），畫面最上面一行「寫手：○○」＋「換寫手」。名字只從雲端來，網頁不判斷誰是寫手。
   // 雲端沒回（沒開寫手代碼的那一家）：什麼都不顯示，畫面跟以前一樣。不給公司發布的那一份（STORAGE_NS 空的）不存寫手的名字、打開時
   // 也不背景問：這台電腦的儲存、送出的請求跟以前一模一樣（KNOWN 183 的儲存鍵檢查照舊只看到舊鍵名）
-  var WRITER_KEY = nsKey('gov_subsidy.writer_name');
+  // 合作單位的代碼（保健課，11/25；雲端的「寫手」多 合作單位 true，只有開了 報名網頁.合作單位代碼 的那一家會回）：partnerOn＝整份換成保健課
+  // （isHealth）、多人一起報名和保健課 LINE 名單不放（雲端也不給）。STORAGE_NS 空的那一份平常不存寫手，只有合作單位的代碼才存名字和
+  // 這個記號（PARTNER_KEY）、打開時才背景問；店裡的通關碼什麼都不存，跟以前一樣
+  var WRITER_KEY = nsKey('gov_subsidy.writer_name'), PARTNER_KEY = nsKey('gov_subsidy.partner_code');
   var WRITER_KEEP = typeof STORAGE_NS === 'string' && STORAGE_NS !== '';
-  var writerName = '';
+  var writerName = '', partnerOn = false;
   function loadWriter() {
-    if (!WRITER_KEEP) return;
+    try { partnerOn = window.localStorage.getItem(PARTNER_KEY) === '1'; } catch (e) { partnerOn = false; }
+    if (!WRITER_KEEP && !partnerOn) return;
     try { writerName = str(window.localStorage.getItem(WRITER_KEY)).slice(0, 50); } catch (e) { writerName = ''; }
+    if (!writerName) partnerOn = false;
   }
-  function saveWriter(name) {
-    if (name === writerName) return;   // 沒變（沒開寫手代碼的一直是空的）：什麼都不做
+  function saveWriter(name, partner) {
+    partner = !!(partner && name);
+    if (name === writerName && partner === partnerOn) return;   // 沒變（沒開寫手代碼的一直是空的）：什麼都不做
+    var was = partnerOn;
     writerName = name;
-    if (!WRITER_KEEP) return;
-    try { if (name) window.localStorage.setItem(WRITER_KEY, name); else window.localStorage.removeItem(WRITER_KEY); } catch (e) { /* 存不了：這次開著照樣顯示 */ }
+    partnerOn = partner;
+    try {
+      if (partner) window.localStorage.setItem(PARTNER_KEY, '1'); else if (was) window.localStorage.removeItem(PARTNER_KEY);
+      if (WRITER_KEEP || partner) { if (name) window.localStorage.setItem(WRITER_KEY, name); else window.localStorage.removeItem(WRITER_KEY); }
+      else if (was) window.localStorage.removeItem(WRITER_KEY);
+    } catch (e) { /* 存不了：這次開著照樣顯示 */ }
   }
-  // 讀梯次成功的回應 → 有「寫手」就記下來、沒有就清掉（之後那一家關了寫手代碼）；回 true＝名字變了
+  // 讀梯次成功的回應 → 有「寫手」就記下來、沒有就清掉（之後那一家關了寫手代碼）；回 true＝名字或是不是合作單位變了
   function noteWriter(r) {
-    var before = writerName;
-    saveWriter(str(obj(r.data && r.data['寫手'])['名字']).slice(0, 50));
-    return before !== writerName;
+    var before = writerName + '|' + partnerOn, w = obj(r.data && r.data['寫手']);
+    saveWriter(str(w['名字']).slice(0, 50), w['合作單位'] === true);
+    return before !== writerName + '|' + partnerOn;
   }
   function writerBarHTML() {
     if (!CODE_ON || G_TOKEN || !writerName || view === 'code' || view === 'wait' || view === 'gsend') return '';
-    return '<p class="writerbar">寫手：<b>' + esc(writerName) + '</b><button type="button" class="linkbtn" data-act="writerSwitch">換寫手</button></p>';
+    return '<p class="writerbar">' + (partnerOn ? '協助報名' : '寫手') + '：<b>' + esc(writerName) + '</b><button type="button" class="linkbtn" data-act="writerSwitch">' +
+      (partnerOn ? '換人' : '換寫手') + '</button></p>';
   }
   // 背景讀到的名字變了：只換最上面那一行（不整頁重畫：正在打字、等雲端的畫面都不受影響）
   function paintWriterBar() {
@@ -1061,15 +1068,14 @@ p.cn{margin:6px 0 2px}
   // 別家的網頁（STORAGE_NS 不是空的）打開時，記著代碼就背景問一次雲端是哪位寫手（名字可能改了、代碼可能被停用；沒開寫手代碼的那一家
   // 回的沒有寫手，什麼都不顯示）；不給公司發布的那一份（STORAGE_NS 空的）不問，跟以前一樣
   function refreshWriter() {
-    if (!WRITER_KEEP || !CODE_ON || G_TOKEN || !storeCode || !API) return;
+    if ((!WRITER_KEEP && !partnerOn) || !CODE_ON || G_TOKEN || !storeCode || !API) return;
     api('GET', '/api/batches', null, WAIT_MS.batches, function (r) {
-      // 名字變了：開始畫面整頁重畫（「我協助的學員」那顆跟著寫手有沒有，KNOWN 202；開始畫面沒有輸入框），其他畫面只換最上面那一行
+      // 名字變了：開始畫面整頁重畫（列印站那顆跟著是不是寫手，KNOWN 204；開始畫面沒有輸入框），其他畫面只換最上面那一行
       if (r.ok) { if (noteWriter(r)) { if (view === 'screen' && state.pos === 0) render(); else if (view === 'station' && stWriter()) openStation(); else paintWriterBar(); } return; }
       codeRejected(r);   // 代碼停用了、換了：到代碼畫面（填到一半的資料照留）
     });
   }
   function askCode(why) {
-    if (view === 'mine') myDrop();   // 從「我協助的學員」換寫手、代碼被停用（KNOWN 202）：拿到的 PDF 先丟掉
     if (why === 'bad') { saveCode(''); saveWriter(''); }
     codeWhy = why;
     if (view !== 'code') codeBack = view === 'welcome' || view === 'station' ? view : 'screen';
@@ -1113,7 +1119,7 @@ p.cn{margin:6px 0 2px}
         return;
       }
       if (r.ok) noteWriter(r);   // 開了寫手代碼的那一家：這個代碼是哪位寫手（KNOWN 182）
-      else if (v !== old) saveWriter('');   // 連不上、換了別的代碼（11/19）：記著的寫手清掉，雲端說是誰之前不當寫手（手機的身分證留空、我協助的學員都沒有）
+      else if (v !== old) saveWriter('');   // 連不上、換了別的代碼（11/19）：記著的寫手清掉，雲端說是誰之前不當寫手（手機的身分證留空沒有）
       codeDone(v, r.ok ? '' : '還沒辦法確認通關碼對不對（連不上雲端服務），先記下來了。');
     });
   }
@@ -1159,7 +1165,7 @@ p.cn{margin:6px 0 2px}
   // 錯誤 → 紅框：一句白話原因。斷線、逾時、雲端暫時出錯 → 加「再試一次」（重跑同一個呼叫，資料都還在）；
   // 重試也沒用的（資料不對、額滿、梯次設定不完整…）只寫雲端回的原因
   var RETRY = { net: 1, timeout: 1, bad_json: 1, ai_failed: 1, sheet_failed: 1, internal: 1 };
-  var STEPS = { batches: '讀取梯次', read: '讀取資料', gen: '產生申請文件', recent: '更新名單', packet: '拿文件', mine: '讀取學員名單', myPacket: '拿文件', dl: '拿文件', word: '轉成 Word ' };
+  var STEPS = { batches: '讀取梯次', read: '讀取資料', gen: '產生申請文件', recent: '更新名單', packet: '拿文件', dl: '拿文件', word: '轉成 Word ' };
   // step＝哪一步（也是「再試一次」要重跑的）；attrs＝按鈕多帶的屬性（列印站拿文件：編號、種類）
   function errHTML(step, r, attrs) {
     var again = !!RETRY[r.code], t;
@@ -1180,8 +1186,6 @@ p.cn{margin:6px 0 2px}
     else if (k === 'batches') { loadBatches(); render(); }
     else if (k === 'recent') stWake(true);
     else if (k === 'packet') stPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind'));
-    else if (k === 'mine') myLoad();
-    else if (k === 'myPacket') myPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind'));
     else if (k === 'dl' || k === 'word') dlGo(el.getAttribute('data-s'), Number(el.getAttribute('data-no')), el.getAttribute('data-kind'), el.getAttribute('data-f'));
   }
 
@@ -1219,8 +1223,10 @@ p.cn{margin:6px 0 2px}
     return '<input type="' + type + '"' + attrs + extra + ' enterkeyhint="next" value="' + esc(val) + '">';
   }
 
+  // 畫面上的標題（保健課的人不寫 AI 課，11/25）；資料表開頭那行（HEADER）不跟著換
+  function formTitle() { return isHealth() ? '保健課' : '重返職場 AI 入門班'; }
   function introHTML() {
-    return '<h1>重返職場 AI 入門班｜<span class="nw">報名資料表</span></h1>' +
+    return '<h1>' + formTitle() + '｜<span class="nw">報名資料表</span></h1>' +
       (notice ? '<div class="box ok" role="status"><p>' + escBr(notice) + '</p></div>' : '') +
       '<p class="lead">大約 10 分鐘，<span class="nw">大多用點的。</span></p>' +
       '<p class="lead">請先準備好身分證，<span class="nw">一開始要拍照。</span></p>' +
@@ -1230,11 +1236,11 @@ p.cn{margin:6px 0 2px}
       '<p class="lead">資料只用在這次補助申請，<span class="nw">申請完就刪除。</span></p>' +
       '<p class="hint">中途離開沒關係，<span class="nw">下次打開可以接著填。</span></p>' +
       '<button type="button" class="btn" data-act="start">我同意，開始填寫</button>' +
-      (TOUCH ? '' : gHomeHTML()) +   // 多人一起報名（10/22）：今天在手機上填好的人、產生 QR（店裡電腦才有）
+      (TOUCH || partnerOn ? '' : gHomeHTML()) +   // 合作單位的代碼（11/25）：手機填好的人、保健課 LINE 名單、多人 QR 都不放（雲端也不給）   // 多人一起報名（10/22）：今天在手機上填好的人、產生 QR（店裡電腦才有）
       // 列印站只給店裡的電腦：學員自己的手機上不放這顆（點進去會看到別人的名字）；手機、平板要用就開 #列印站 網址
       // 寫手（開了寫手代碼的那一家，名字不是「主辦」）也不放：列印站只認店裡的碼（KNOWN 204）
       (TOUCH || stWriter() ? '' : '<div class="foot"><button type="button" class="btn btn2" data-act="station">列印站（店裡電腦用）</button></div>') +
-      mineHomeHTML() +
+      (TOUCH || partnerOn ? '' : '<div id="llist">' + lLinkHTML() + '</div>') +   // 保健課 LINE 報名名單：開始畫面最下面一行小連結，點進去才是名單（11/25）
       (CODE_ON ? '<div class="foot"><button type="button" class="linkbtn" data-act="code">更換通關碼</button></div>' : '');
   }
 
@@ -1273,7 +1279,7 @@ p.cn{margin:6px 0 2px}
       btn = '接著填（第 ' + shownCount(p) + ' 題）';
     }
     // 一小句不拆開換行（長輩讀到一半斷行容易看錯）
-    return '<h1>重返職場 AI 入門班｜<span class="nw">報名資料表</span></h1>' +
+    return '<h1>' + formTitle() + '｜<span class="nw">報名資料表</span></h1>' +
       '<p class="lead">' + ['歡迎回來！'].concat(msg).map(function (s) { return '<span class="nw">' + esc(s) + '</span>'; }).join('') + '</p>' +
       (nm ? '<p class="hint">學員：' + esc(nm) + (state.rid ? '（編號 ' + state.rid + '）' : '') + '</p>' : '') +
       '<button type="button" class="btn" data-act="resume">' + esc(btn) + '</button>' + footHTML(true);
@@ -1465,9 +1471,11 @@ p.cn{margin:6px 0 2px}
     var h = '';
     if (!API) h += '<p class="hint">（測試模式：下面是範例梯次）</p>';
     if (batchGone) h += '<div class="box warn"><p>原本選的 ' + esc(batchGone) + ' 不能報名了，請重選。</p></div>';
-    if (state.lineId) h += '<p class="hint">台中 LINE 報名的人，<span class="nw">只列「' + esc(LINE_CH) + '」的梯次。</span></p>';
-    if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的' + (state.lineId ? '「' + esc(LINE_CH) + '」' : '') + '梯次。' +
-      (state.lineId ? '<br>請先在後台新增梯次，報名管道選「' + esc(LINE_CH) + '」。' : '') + '</p></div>';
+    var pt = partnerOn && !state.lineId;   // 合作單位的代碼（11/25）：只看得到自己單位開的保健課梯次
+    if (state.lineId) h += '<p class="hint">保健課 LINE 報名的人，<span class="nw">只列「' + esc(LINE_CH) + '」的梯次。</span></p>';
+    else if (pt) h += '<p class="hint">只列你們開的保健課梯次。</p>';
+    if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的' + (state.lineId ? '「' + esc(LINE_CH) + '」' : pt ? '保健課' : '') + '梯次。' +
+      (state.lineId ? '<br>請先在後台新增梯次，報名管道選「' + esc(LINE_CH) + '」。' : pt ? '<br>請聯絡主辦開班。' : '') + '</p></div>';
     var tabs = BATCH_REGIONS === true ? regionTabs(batches) : null, at = tabs ? regionAt(batches, tabs) : 'all', tip = tabs ? regionHint(batches, at, tabs) : '';
     if (tabs) h += regionTabsHTML(tabs, at, 'batchRg') + (tip ? '<p class="hint rgh">' + esc(tip) + '</p>' : '') +
       (openCount() && !openIn(batches, at) ? '<div class="box warn"><p>這一區現在沒有開放報名的梯次，按上面的「全部」看別區。</p></div>' : '') + pickedHint(at, tabs);
@@ -2052,10 +2060,14 @@ p.cn{margin:6px 0 2px}
     });
     return parts.join('、');
   }
-  // 現在的離開原因：現場點過的；沒點過 → 讀取時判讀給的（10/22 起表單不問，多半是空的）
+  // 現在的離開原因：現場點過的；沒點過 → 讀取時判讀給的（10/22 起表單不問，多半是空的）→ 保健課再沒有就用系統先選的
+  // （判讀的 推薦離開原因，只有保健課的梯次才有這個鍵，11/25）
   function leaveStr() {
     var v = state.fix['離開原因'];
-    return typeof v === 'string' ? v : str(J0()['離開原因']);
+    return typeof v === 'string' ? v : str(J0()['離開原因']) || str(J0()['推薦離開原因']);
+  }
+  function leavePicked() {   // 卡片上點著的是系統先選的（現場還沒動過）
+    return typeof state.fix['離開原因'] !== 'string' && !str(J0()['離開原因']) && !!str(J0()['推薦離開原因']);
   }
   function ageAt(birth, day) {
     var b = normDate(birth), x = normDate(day);
@@ -2080,7 +2092,8 @@ p.cn{margin:6px 0 2px}
   }
   // 卡片裡的一段（10/22 起放在選定那份的卡片裡；舊雲端另外包一張卡）
   function leaveHTML() {
-    var L = multiParse(LEAVE, leaveStr()), h = '<p class="flabel">為什麼離開這份工作？<span class="sub2">問她，可以點好幾個</span></p><div class="chips">';
+    var L = multiParse(LEAVE, leaveStr()), h = '<p class="flabel">為什麼離開這份工作？<span class="sub2">' +
+      (leavePicked() ? '系統先選，請唸給她聽' : '問她，可以點好幾個') + '</span></p><div class="chips">';
     LEAVE.opts.forEach(function (o, i) {
       h += '<button type="button" class="pk" data-act="leave" data-i="' + i + '" aria-pressed="' + (L.sel.indexOf(o.t) >= 0) + '">' + esc(o.t) + '</button>';
     });
@@ -2747,7 +2760,8 @@ p.cn{margin:6px 0 2px}
   // 手機、平板（學員自己的手機）：印表機在店裡的電腦 → 最上面叫她去列印站點自己的名字；這裡的列印按鈕縮小放最下面當退路。
   // 文件沒存進雲端（試算表暫時連不上）列印站就看不到，照舊在這裡印
   // 寫手的手機（KNOWN 207，亞拿 11/18 Tomi「現在改」；判斷同 KNOWN 204 的 stWriter）：寫手進不了列印站 → 不叫她去列印站，
-  // 列印按鈕照電腦的樣子放最上面，下面一行「我協助的學員」；沒存進雲端換一句「之後看不到，現在就印或下載」。沒開寫手代碼的那一家不會走到
+  // 列印按鈕照電腦的樣子放最上面，下面一行「之後要再印：用你的 Gmail 登入後台」（11/25 拿掉「我協助的學員」之後改指到寫手後台；合作單位的代碼
+  // 沒有這行：合作單位的後台只能看、不能印）；沒存進雲端換一句「之後在後台拿不到，現在就印或下載」。沒有寫手、合作單位代碼的那一家不會走到
   function printHTML() {
     var o = obj(state.out), n = Number(o['頁數']) || 0, nm = nameOf(), pf = files.pdf_print, ef = files.pdf_env;
     var wr = TOUCH && stWriter(), saved = o['已存雲端'] !== false;
@@ -2759,7 +2773,7 @@ p.cn{margin:6px 0 2px}
     var who = '點「' + esc(nm) + '」';
     if (far) h += '<div class="box go"><p><span class="nw">請到櫃台電腦的</span><span class="nw">「列印站」，</span>' +
       (nm.length > 5 ? who : '<span class="nw">' + who + '</span>') + '<span class="nw">的名字列印</span></p></div>';
-    else if (wr && !saved) h += '<div class="box err"><p>' + ['這份沒有存進雲端，', '之後在「我協助的學員」看不到，', '請現在就印出來', '或按「下載 PDF」存在手機。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') + '</p></div>';
+    else if (wr && !saved) h += '<div class="box err"><p>' + ['這份沒有存進雲端，', '之後在後台拿不到，', '請現在就印出來', '或按「下載 PDF」存在手機。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') + '</p></div>';
     else if (TOUCH && !wr) h += '<div class="box err"><p>' + ['這份申請文件', '沒有存進雲端，', '櫃台電腦的「列印站」', '看不到。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') +
       '<br>' + ['請把這支手機', '拿給現場人員，', '用下面的按鈕列印。'].map(function (s) { return '<span class="nw">' + s + '</span>'; }).join('') + '</p></div>';
     var hd = function (s) { return far ? '<h3 class="st2">' + s + '</h3>' : '<h2 class="st">' + s + '</h2>'; };
@@ -2775,7 +2789,7 @@ p.cn{margin:6px 0 2px}
       '<a class="' + c2 + '" href="' + esc(pf.url) + '" download="' + esc('申請文件_' + nm + '.pdf') + '">下載 PDF</a>' +
       (ef ? (far ? '<h3 class="st2">信封</h3>' : '<h2 class="st">信封</h2>') + '<p class="lead">先把 A4 牛皮紙信封<span class="nw">放進印表機。</span></p>' + printBtn('pdf_env', '印信封', c2, '信封') : ''));
     if (!far) h += btns;
-    if (wr && saved) h += '<p class="hint">之後要再印：<span class="nw">開始畫面的「我協助的學員」</span><span class="nw">（開課當天前都看得到）。</span></p>';
+    if (wr && saved && !partnerOn) h += '<p class="hint">之後要再印：<span class="nw">用你的 Gmail 登入後台</span><span class="nw">（開課當天前都看得到）。</span></p>';
     h += '<h2 class="st">要簽名、手寫的地方</h2>' + (arr(o['簽名處']).length ? '<ol class="plist">' + arr(o['簽名處']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>' : '<p>（沒有資料）</p>');
     if (arr(o['提醒']).length) h += '<h2 class="st">提醒</h2><ul class="plist">' + arr(o['提醒']).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
     if (far) h += '<h2 class="st">列印站印不出來的時候</h2>' + btns;
@@ -2838,9 +2852,11 @@ p.cn{margin:6px 0 2px}
   var stActive = Date.now(), stIdle = false, stChanged = 0, stJob = '', stUrls = {};
   var begun = false;           // 報名畫面開始過了沒（做到一半的照片、檔案拿回來了沒）
   // 列印站只認店裡的碼（KNOWN 204，亞拿 11/17「對寫手關掉」）：這台記的是寫手（雲端回的名字不是「主辦」）→ 開始畫面沒有那顆；用網址
-  // 進來、或雲端回 staff_only（403，不清代碼）→ 只放那句話＋「我協助的學員」＋「回報名畫面」。沒開寫手代碼的那一家
+  // 進來、或雲端回 staff_only（403，不清代碼）→ 只放那句話＋「回報名畫面」（11/25 拿掉「我協助的學員」那顆：寫手、合作單位直接到後台看）。
+  // 那句話用網頁自己的（stStaff，不照雲端回的字）：亞拿的寫手多一句到寫手後台補印；合作單位的後台只能看、不能印，不寫。沒開寫手代碼的那一家
   // writerName 一直是空的、雲端也不會回 staff_only：跟以前一樣
-  var ST_STAFF = '列印站只有店裡的通關碼能用。補印你協助的學員，請按開始畫面的「我協助的學員」。';
+  var ST_STAFF = '列印站只有店裡的通關碼能用。', ST_REPRINT = '補印你協助的學員，請用你的 Gmail 登入後台。';
+  function stStaff() { return ST_STAFF + (partnerOn ? '' : ST_REPRINT); }
   var stDenied = '';
   function stWriter() { return CODE_ON && !G_TOKEN && !!writerName && writerName !== '主辦'; }
 
@@ -2853,7 +2869,7 @@ p.cn{margin:6px 0 2px}
     if (!atStation()) { try { history.pushState(null, '', '#' + ST_HASH); } catch (e) { /* 網址沒變也照常用 */ } }
     view = 'station';
     if (codeMissing()) { codeWhy = 'first'; codeBack = 'station'; view = 'code'; render(); return; }
-    stDenied = stWriter() ? ST_STAFF : '';
+    stDenied = stWriter() ? stStaff() : '';
     if (stDenied) { render(); try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ } return; }
     if (!stTimer) stTimer = setInterval(stTick, ST_EVERY);
     stActive = Date.now();
@@ -2889,7 +2905,7 @@ p.cn{margin:6px 0 2px}
   function stDeny(r) {
     if (r.code !== 'staff_only') return false;
     Object.keys(stUrls).forEach(function (k) { URL.revokeObjectURL(stUrls[k]); });
-    stUrls = {}; stList = null; stKey = ''; stErr = ''; stDenied = r.msg || ST_STAFF;
+    stUrls = {}; stList = null; stKey = ''; stErr = ''; stDenied = stStaff();
     dlReset();
     clearInterval(stTimer); stTimer = 0;
     render();
@@ -2938,7 +2954,6 @@ p.cn{margin:6px 0 2px}
 
   function stationHTML() {
     if (stDenied) return '<h1>列印站</h1><div class="box warn"><p>' + esc(stDenied) + '</p></div>' +
-      '<button type="button" class="btn" data-act="stMine">我協助的學員</button>' +
       '<div class="foot"><button type="button" class="linkbtn" data-act="stExit">回報名畫面</button></div>';
     var h = '<h1>剛產好的申請文件</h1><div class="sbar"><p class="hint" id="stStat">' + esc(stStatus()) + '</p>' +
       '<button type="button" class="btn btn2 sm" data-act="stReload">重新整理</button></div>';
@@ -2999,329 +3014,9 @@ p.cn{margin:6px 0 2px}
       });
   }
 
-  // ---------- 我協助的學員（KNOWN 202，亞拿 11/17：寫手回頭補印自己學員的申請文件、信封；規格第 18 節） ----------
-  // 只有雲端說這個代碼是哪位寫手（writerName 有值：開了寫手代碼的那一家，寫手代碼或共用的店裡碼＝主辦）才有開始畫面那顆；沒開的那一家
-  // （雲端不回寫手）、學員手機的碼都沒有，畫面跟以前一樣。誰看得到哪幾位由雲端算好（寫手只看自己記到的、主辦看全部、那一梯開課當天
-  // 以前），網頁不判斷。列印照列印站：電腦隱藏框叫列印視窗＋新分頁退路、平板手機在新分頁打開；PDF 只放記憶體，重新整理、離開就丟掉
-  // 寫手回報寄出、核准函（#388，Tomi 11/19「開放，照規劃」；規格 18-4）：照「要做的事」分段（還沒寄出、等核准函、已核准，等上課、分署不核准，
-  // 各段寫幾位）；每張卡一顆大按鈕（申請寄出了／收到核准函），「分署不核准」「要再印申請文件、信封」是小字按鈕（再印打開就是原本的列印那一塊）。
-  // 按下去在同一格確認（寄出、收到核准函選日期，預設今天、不能選明天以後，收到日也不能比寄出日早〔Tomi 11/19〕；不核准可以填原因），按完那一格原地縮成綠框「✓ 已記下：…」（不跳走，下次打開才換段）。
-  // 每位在哪一段、誰哪天記的由雲端給（/api/mine 每位的 進度、寄出日、核准紀錄…），能不能記也由雲端判斷（POST /api/mine/progress）
-  var myList = null, myAll = false, myErr = '', myLoading = false, mySeq = 0, myJob = '', myUrls = {};
-  // myOpen：正在確認的那一格 { no, step, date, reason, busy, err }；mySaved：剛記好的 編號 → { at（原本那一段）, text, note }；
-  // myMore：「要再印申請文件、信封」打開的 編號；myTodo：還沒寄出＋等核准函幾位（開始畫面那顆的字；還沒問過＝-1）
-  var myOpen = null, mySaved = {}, myMore = {}, myTodo = -1, myTodoAt = 0, myTodoBusy = false, myTodoSeq = 0;
-  var MY_TODO_MS = 60000;   // 開始畫面背景問「幾位要問進度」：60 秒內問過就不再問
-  var MY_SECTIONS = [['還沒寄出', '還沒寄出'], ['等核准函', '等核准函'], ['已核准', '已核准，等上課'], ['不核准', '分署不核准']];
-  var MY_ASK = '記了就不能改。記錯了請聯絡主辦。';
-
-  function mineHomeHTML() {
-    if (!CODE_ON || G_TOKEN || !writerName) return '';
-    return '<div class="foot"><button type="button" class="btn btn2" data-act="mine">' + myHomeLabel() + '</button></div>';
-  }
-  // 開始畫面那顆的字：還沒寄出＋等核准函有幾位就多一行「N 位要問進度」（0 位、還沒問到只寫原本的字）
-  function myHomeLabel() {
-    return '我協助的學員' + (myTodo > 0 ? '<span class="mcount">' + myTodo + ' 位要問進度</span>' : '');
-  }
-  // 開始畫面出現時背景問一次雲端（60 秒內問過、正在問就不問）；拿到只換那顆的字，不整頁重畫。沒成功就照舊（代碼停用由 refreshWriter 處理）
-  function myCountSoon() {
-    if (!API || !CODE_ON || G_TOKEN || !writerName || !storeCode || myTodoBusy || Date.now() - myTodoAt < MY_TODO_MS) return;
-    var my = ++myTodoSeq;
-    myTodoBusy = true;
-    api('GET', '/api/mine', null, WAIT_MS.mine, function (r) {
-      if (my !== myTodoSeq) return;
-      myTodoBusy = false;
-      myTodoAt = Date.now();
-      if (!r.ok) return;
-      myTodo = myCountOf(myGroups(r.data));
-      var b = view === 'screen' && state.pos === 0 ? app.querySelector('[data-act="mine"]') : null;
-      if (b) b.innerHTML = myHomeLabel();
-    });
-  }
-  function myGroups(data) {   // /api/mine 回的 → [{ b: 那一梯, people: [她…] }]（雲端已經照開課日近到遠、編號小到大排好）
-    return arr(obj(data)['梯次']).map(obj).map(function (b) {
-      return { b: b, people: arr(b['學員']).map(obj).filter(function (d) { return Number(d['編號']) > 0; }) };
-    }).filter(function (x) { return x.people.length; });
-  }
-  function myCountOf(list) {
-    var n = 0;
-    arr(list).forEach(function (x) { x.people.forEach(function (d) { if (d['進度'] === '還沒寄出' || d['進度'] === '等核准函') n++; }); });
-    return n;
-  }
-  // PDF 丟掉：連結收回、叫列印視窗用的隱藏框也拿掉（店裡的電腦換寫手、通關碼不對回代碼畫面時，上一位寫手的 PDF 不留在這頁）
-  function myDrop() {
-    Object.keys(myUrls).forEach(function (k) { URL.revokeObjectURL(myUrls[k]); });
-    myUrls = {};
-    dlReset();
-    var fr = document.getElementById('pframe');
-    if (fr && fr.parentNode) fr.parentNode.removeChild(fr);
-  }
-  function myReset() { myOpen = null; mySaved = {}; myMore = {}; }
-  function openMine() {
-    myDrop();
-    myReset();
-    myList = null; myAll = false; myErr = ''; myJob = ''; myLoading = false; mySeq++;
-    view = 'mine';
-    render();
-    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
-    myLoad();
-  }
-  function closeMine() {
-    myDrop();
-    myReset();
-    myList = null; myErr = ''; myJob = ''; myLoading = false; mySeq++;
-    view = 'screen';
-    if (!begun) { begin(); return; }   // 從列印站那句話過來的（KNOWN 204）：報名畫面還沒開始過，先把做到一半的拿回來
-    render();
-    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
-  }
-  function myLoad() {
-    if (myLoading) return;
-    if (!API) { myList = []; render(); return; }   // 測試模式：沒有連雲端服務，名單一直是空的
-    var my = ++mySeq;
-    myLoading = true;
-    render();
-    api('GET', '/api/mine', null, WAIT_MS.mine, function (r) {
-      if (my !== mySeq) return;
-      myLoading = false;
-      if (view !== 'mine') return;
-      if (!r.ok) {
-        if (codeRejected(r)) return;
-        myErr = errHTML('mine', r);   // 舊名單留著
-        render();
-        return;
-      }
-      myErr = '';
-      myDrop();   // 重新整理：拿到的 PDF 丟掉（她可能換班重產了），要印再按一次
-      myReset();  // 剛記好的換到新的那一段
-      myAll = r.data['主辦'] === true;
-      myList = myGroups(r.data);
-      myTodo = myCountOf(myList);
-      myTodoAt = Date.now();
-      render();
-    });
-  }
-  function mineHTML() {
-    var h = '<h1>我協助的學員</h1><div class="sbar"><p class="hint">' + (myAll ? '<span class="nw">全部寫手的學員。</span>' : '') +
-      '問到她寄出了、收到核准函了，<span class="nw">就在她那一格按一下。</span></p>' +
-      '<button type="button" class="btn btn2 sm" data-act="myReload"' + (myLoading ? ' aria-disabled="true"' : '') + '>' + (myLoading ? '讀取中…' : '重新整理') + '</button></div>';
-    if (myList && myList.length) h += dlNoteHTML();   // 下載 Word 的提醒：整頁一次
-    if (myErr) h += myErr;
-    h += '<div id="msg" role="alert"></div>';
-    if (myList === null) h += myErr ? '' : '<div class="box warn" role="status"><p>正在讀取，請稍等…</p></div>';
-    else if (!myList.length) h += '<div class="box warn"><p>目前沒有可以印的學員。<br>學員的申請文件產出後，到她那一梯開課當天，這裡都看得到。</p></div>';
-    else h += mySectionsHTML();
-    return h + '<div class="foot"><button type="button" class="linkbtn" data-act="myExit">回報名畫面</button></div>';
-  }
-  // 照段落排：雲端排好的順序（開課日近到遠、編號小到大）放進各段；名單上沒有她（進度空的）放「還沒寄出」、只能印。
-  // 剛記好的留在原本那一段（綠框），段落標題的人數不算她
-  function mySectionsHTML() {
-    var at = { '還沒寄出': [], '等核准函': [], '已核准': [], '不核准': [] }, today = todayTW(), h = '';
-    arr(myList).forEach(function (x) {
-      x.people.forEach(function (d) {
-        var saved = mySaved[Number(d['編號'])];
-        (at[saved ? saved.at : str(d['進度'])] || at['還沒寄出']).push({ d: d, b: x.b, saved: saved });
-      });
-    });
-    MY_SECTIONS.forEach(function (s) {
-      var list = at[s[0]], done = s[0] === '已核准' || s[0] === '不核准';
-      if (!list.length) return;
-      h += '<h2 class="mon mst">' + s[1] + ' <span class="mn">' + list.filter(function (p) { return !p.saved; }).length + ' 位</span></h2>' +
-        '<ol class="' + (done ? 'mdone' : 'slist') + '">' + list.map(function (p) { return p.saved ? mySavedHTML(p.saved) : done ? myDoneHTML(p, s[0]) : myCardHTML(p, s[0], today); }).join('') + '</ol>';
-    });
-    return h;
-  }
-  function mySavedHTML(s) {
-    return '<li class="msaved" role="status"><b>✓ 已記下：' + esc(s.text) + '</b><span>' + esc(s.note) + '</span></li>';
-  }
-  // 民國日期 115/12/02 → 12月2日；看不懂＝''
-  function myDay(roc) { var t = normDate(roc); return t ? Number(t.slice(4, 6)) + '月' + Number(t.slice(7, 9)) + '日' : ''; }
-  // 民國日期 → 2026-12-02（日期框用）
-  function myIso(roc) { var t = normDate(roc); return t ? (Number(t.slice(0, 3)) + 1911) + '-' + t.slice(4, 6) + '-' + t.slice(7, 9) : ''; }
-  // 兩個民國日期差幾天（後面減前面）；看不懂＝null
-  function myDays(from, to) {
-    var a = myIso(from), b = myIso(to);
-    return a && b ? Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000) : null;
-  }
-  // 上課地點只寫縣市＋區（台南市中西區… → 台南中西；同後台首頁的短名字）；認不出照原樣
-  function myPlace(place) {
-    var t = str(place).replace(/\s/g, ''), m = /^(.{2})[市縣](.{1,3}?)區/.exec(t) || /^(.{2})[市縣](.{1,3}?)[鄉鎮市]/.exec(t);
-    return m ? m[1] + m[2] : str(place).trim() ? ' ' + str(place).trim() : '';
-  }
-  function myClassDay(b) { return myDay(b['開課日']) + (b['星期'] ? '（' + str(b['星期']) + '）' : ''); }
-  // 誰記的：寫手自己記的寫「你」（主辦看全部時照名字）；沒記（功能開之前的）＝''
-  function myWho(who) { who = str(who); return who && !myAll && who === writerName ? '你' : who; }
-  function myWriterHTML(d) { return myAll ? '<span class="nw">・寫手 ' + esc(str(d['寫手']) || '還沒記') + '</span>' : ''; }
-  // 還沒寄出、等核准函（名單上沒有她的也是這一種）：姓名、上課那天和地點、提醒字、一顆大按鈕＋小字按鈕；正在確認時換成確認那一格。
-  // 「要再印申請文件、信封」這兩種卡片都有（寄出之後也可能要再印、下載；做完的那兩段照原型沒有，Claude 定）
-  function myCardHTML(p, at, today) {
-    var d = p.d, b = p.b, no = Number(d['編號']), nm = str(d['姓名']) || '（沒有姓名）', open = myOpen && myOpen.no === no ? myOpen : null;
-    var h = '<li class="srow" data-my="' + no + '"><span class="sname">' + esc(nm) + '</span><span class="smeta">' + esc(myClassDay(b) + myPlace(b['上課地點'])) + myWriterHTML(d) + '</span>';
-    if (at === '等核准函') {
-      var since = myDays(d['寄出日'], today), left = myDays(today, b['開課日']);
-      h += '<p class="mline">' + esc(myDay(d['寄出日'])) + '寄出' + (since > 0 ? '，' + since + ' 天了' : '') + '</p>';
-      if (left !== null && left >= 0 && left <= 7) h += '<p class="mline mdue">' + (left ? left + ' 天後上課還沒收到' : '今天上課還沒收到') + '：請她打電話問分署。</p>';
-      if (open) return h + myConfirmHTML(d, open) + '</li>';
-      h += '<button type="button" class="btn mok" data-act="myAsk" data-no="' + no + '" data-step="核准">收到核准函</button>' +
-        '<button type="button" class="linkbtn mlink" data-act="myAsk" data-no="' + no + '" data-step="不核准">分署不核准</button>';
-    } else if (d['進度'] !== '還沒寄出') {   // 名單上沒有她：不能記，只能印
-      h += '<p class="mline">她還不在梯次名單上，不能記進度。請聯絡主辦。</p>';
-    } else {
-      var due = b['建議寄出日'], late = myDays(due, today);
-      if (late > 0) h += '<p class="mline mdue">建議 ' + esc(myDay(due)) + '前寄，已過 ' + late + ' 天。開課前還能寄，請她儘快寄出。</p>';
-      else if (late === 0) h += '<p class="mline mdue">建議今天寄出，請她今天寄。</p>';
-      else if (late !== null) h += '<p class="mline">建議 ' + esc(myDay(due)) + '前寄</p>';
-      if (open) return h + myConfirmHTML(d, open) + '</li>';
-      h += '<button type="button" class="btn" data-act="myAsk" data-no="' + no + '" data-step="寄出">申請寄出了</button>';
-    }
-    var more = myMore[no] || myJob.split('|')[0] === String(no) || !!(myUrls[no + '|申請文件'] || myUrls[no + '|信封']);
-    h += '<button type="button" class="linkbtn mlink" data-act="myMore" data-no="' + no + '" aria-expanded="' + more + '">要再印申請文件、信封</button>';
-    return h + (more ? myPrintHTML(no, nm, d) : '') + '</li>';
-  }
-  // 已核准，等上課／分署不核准：一行姓名＋結果、一行上課那天・誰哪天記的；不核准多「按錯了，改回等核准函」
-  function myDoneHTML(p, at) {
-    var d = p.d, no = Number(d['編號']), nm = str(d['姓名']) || '（沒有姓名）', ok = at === '已核准', rec = obj(d[ok ? '核准紀錄' : '不核准紀錄']);
-    var who = myWho(rec['誰']), day = myDay(rec['日']), open = myOpen && myOpen.no === no ? myOpen : null;
-    var got = ok ? myDay(d['核准日']) : '';   // 收到核准函那一天（以前記的沒有）
-    var h = '<li data-my="' + no + '"><div class="ml1"><span class="mwho">' + esc(nm) + '</span><span class="mwhat' + (ok ? ' mgood' : '') + '">' + (ok ? '已核准' : '不核准') + '</span></div>' +
-      '<div class="mwhen">' + esc(myClassDay(p.b) + (ok ? '上課' : '的課') + (got ? '・' + got + '收到核准函' : '') + (who || day ? '・' + (who ? who + ' ' : '') + day + '記的' : '')) + myWriterHTML(d) + '</div>';
-    if (!ok) h += open ? myConfirmHTML(d, open) : '<button type="button" class="linkbtn mlink" data-act="myAsk" data-no="' + no + '" data-step="改回">按錯了，改回等核准函</button>';
-    return h + '</li>';
-  }
-  // 原本的列印那一塊（「要再印申請文件、信封」打開才有）：列印申請文件、有信封才有印信封（上面一行牛皮紙信封）、下載、電腦的新分頁退路
-  function myPrintHTML(no, nm, d) {
-    var h = '<div class="sbtns"><div>' + myBtn(no, nm, '申請文件', '列印申請文件', 'btn') + (DL_ON ? dlRowHTML('my', no, nm, '申請文件') : '') + '</div>';
-    if (d['有信封']) h += '<div><p class="snote">先把 A4 牛皮紙信封放進印表機</p>' + myBtn(no, nm, '信封', '印信封', 'btn btn2') + (DL_ON ? dlRowHTML('my', no, nm, '信封') : '') + '</div>';
-    // 平板手機：拿到的 PDF 已經換成大按鈕（myBtn），不另外放退路那一行（手機沒有列印視窗）
-    var links = TOUCH ? [] : ['申請文件', '信封'].filter(function (k) { return myUrls[no + '|' + k]; }).map(function (k) {
-      return '<a href="' + esc(myUrls[no + '|' + k]) + '" target="_blank" rel="noopener">' + esc(k) + '</a>';
-    });
-    return h + '</div>' + (links.length ? '<p class="sfall">列印視窗沒有出來？用新分頁打開：' + links.join('') + '</p>' : '');
-  }
-  // 同一格確認：寄出、收到核准函選日期（預設今天、最多到今天；收到日最早是寄出日）、不核准可以填原因；儲存中、沒存成（紅字）都寫在這一格
-  function myConfirmHTML(d, o) {
-    var no = Number(d['編號']), nm = str(d['姓名']) || '她', s = o.step;
-    var title = s === '寄出' ? nm + '的申請寄出了？' : s === '核准' ? nm + '收到核准函了？' : s === '不核准' ? nm + '的申請，分署不核准？' : '把' + nm + '改回等核准函？';
-    var h = '<div class="mconf' + (s === '核准' ? ' okc' : '') + '" role="group" aria-labelledby="mc' + no + '"><h3 id="mc' + no + '">' + esc(title) + '</h3>';
-    if (s === '寄出' || s === '核准') {
-      var lo = s === '核准' ? myIso(d['寄出日']) : '';
-      h += '<label class="flabel" for="md' + no + '">' + (s === '寄出' ? '哪一天寄的' : '哪一天收到的') + '</label><input class="field" id="md' + no + '" type="date" data-myf="date" value="' +
-        esc(o.date) + '" max="' + esc(myIso(todayTW())) + '"' + (lo ? ' min="' + esc(lo) + '"' : '') + (o.busy ? ' disabled' : '') + '>';
-    }
-    if (s === '不核准') h += '<label class="flabel" for="mr' + no + '">分署寫的原因（可以不填）</label><input class="field" id="mr' + no + '" type="text" data-myf="reason" maxlength="200" value="' +
-      esc(o.reason) + '"' + (o.busy ? ' disabled' : '') + '>';
-    h += '<p class="msmall">' + (s === '不核准' ? '按錯了可以改回等核准函。' : s === '改回' ? '不核准的紀錄會清掉，她回到等核准函。' : MY_ASK) + '</p>';
-    if (o.err) h += '<p class="merr" role="alert">' + esc(o.err) + '</p>';
-    var label = s === '寄出' ? '確定寄出了' : s === '核准' ? '確定收到了' : s === '不核准' ? '確定不核准' : '確定改回';
-    return h + '<button type="button" class="btn' + (s === '核准' ? ' mok' : '') + '" data-act="myDo"' + (o.busy ? ' aria-disabled="true"' : '') + '>' + (o.busy ? '儲存中…' : label) + '</button>' +
-      '<button type="button" class="linkbtn mlink" data-act="myCancel"' + (o.busy ? ' aria-disabled="true"' : '') + '>先不要</button></div>';
-  }
-  // 確認那一格打的寄出日、原因記在 myOpen（整頁重畫時照舊）；是這兩格回 true
-  function myInput(t) {
-    var f = t && t.getAttribute && t.getAttribute('data-myf');
-    if (!f || !myOpen) return false;
-    if (f === 'date') myOpen.date = t.value; else myOpen.reason = t.value;
-    return true;
-  }
-  function myPerson(no) {
-    var hit = null;
-    arr(myList).forEach(function (x) { x.people.forEach(function (d, i) { if (Number(d['編號']) === no) hit = { x: x, i: i, d: d }; }); });
-    return hit;
-  }
-  function myAsk(no, step) {
-    if ((myOpen && myOpen.busy) || !myPerson(no)) return;
-    myOpen = { no: no, step: step, date: myIso(todayTW()), reason: '', busy: false, err: '' };
-    render();
-    var box = app.querySelector('[data-my="' + no + '"] .mconf'), ok = box && box.querySelector('[data-act="myDo"]');
-    if (box) scrollToEl(box);
-    if (ok) { try { ok.focus({ preventScroll: true }); } catch (e) { /* 舊瀏覽器 */ } }   // 原本按的那顆不見了：焦點放到「確定」（鍵盤、報讀的人接得上）
-  }
-  function myCancel() {
-    if (!myOpen || myOpen.busy) return;
-    var no = myOpen.no;
-    myOpen = null;
-    render();
-    var row = app.querySelector('[data-my="' + no + '"]');
-    if (row) scrollToEl(row);
-  }
-  // 按「確定」：送雲端 POST /api/mine/progress；成功那一格縮成綠框（她留在原本那一段，下次打開才換段），沒存成在同一格寫紅字
-  function myDo() {
-    var o = myOpen, p = o && myPerson(o.no);
-    if (!o || o.busy || !p) return;
-    var sent = o.step === '寄出', got = o.step === '核准', lo = got ? myIso(p.d['寄出日']) : '';
-    if ((sent || got) && !/^\d{4}-\d{2}-\d{2}$/.test(o.date)) { o.err = sent ? '請選她寄出的那一天。' : '請選她收到核准函的那一天。'; render(); return; }
-    if ((sent || got) && o.date > myIso(todayTW())) { o.err = (sent ? '寄出日' : '收到日') + '不能是明天以後，請改成她真的' + (sent ? '寄出' : '收到核准函') + '的那一天。'; render(); return; }
-    if (got && lo && o.date < lo) { o.err = '收到日不能比寄出日早，請改成她真的收到核准函的那一天。'; render(); return; }
-    var body = { '編號': o.no, '動作': o.step };
-    if (sent) body['寄出日'] = o.date;
-    if (got) body['收到日'] = o.date;
-    if (o.step === '不核准' && clean(o.reason)) body['原因'] = clean(o.reason).slice(0, 200);
-    o.busy = true;
-    o.err = '';
-    render();
-    var my = mySeq, was = str(p.d['進度']) || '還沒寄出';
-    api('POST', '/api/mine/progress', JSON.stringify(body), WAIT_MS.mine, function (r) {
-      if (my !== mySeq || myOpen !== o || view !== 'mine') return;   // 已經離開這一頁、重新整理了
-      o.busy = false;
-      if (!r.ok) {
-        if (codeRejected(r)) return;   // 代碼被停用了、換了：到代碼畫面
-        o.err = r.code === 'net' ? '沒存成：網路斷線了，請看 Wi-Fi 有沒有通，再按一次。' : RETRY[r.code] ? '沒存成，請再按一次' : '沒存成：' + (r.msg || '雲端服務出錯（' + r.code + '）');
-        render();
-        return;
-      }
-      var d = obj(r.data['學員']), q = myPerson(o.no);
-      if (q && Number(d['編號']) === o.no) q.x.people[q.i] = d; else d = p.d;
-      var nm = str(d['姓名']) || '她', now = MY_SECTIONS.filter(function (s) { return s[0] === d['進度']; })[0];
-      mySaved[o.no] = { at: was, text: o.step === '寄出' ? nm + ' ' + myDay(d['寄出日']) + '寄出' : o.step === '核准' ? nm + (myDay(d['核准日']) ? ' ' + myDay(d['核准日']) : '') + '收到核准函' : o.step === '不核准' ? nm + '分署不核准' : nm + '改回等核准函',
-        note: (now ? '下次打開這一頁，她會在「' + now[1] + '」那一段。' : '') + (r.data['已經記過'] === true ? '（之前就記好了）' : '') };
-      myOpen = null;
-      delete myMore[o.no];
-      myTodo = myCountOf(myList);
-      render();
-    });
-  }
-  // 平板手機拿到 PDF 之後：原地換成同樣大小的實心大按鈕（新分頁打開的連結），按一下就開 PDF（主對話 11/17：手機要點兩次、第二次點小字會卡住）
-  function myBtn(no, nm, kind, label, cls) {
-    var url = TOUCH && myUrls[no + '|' + kind];
-    if (url) return '<a class="btn" data-no="' + no + '" data-opened="' + esc(kind) + '" href="' + esc(url) + '" target="_blank" rel="noopener" aria-label="' +
-      esc('打開' + kind + '：' + nm) + '">' + esc('打開' + kind) + '</a>';
-    var on = myJob === no + '|' + kind;
-    return '<button type="button" class="' + cls + '" data-act="myPrint" data-no="' + no + '" data-kind="' + esc(kind) + '" aria-label="' +
-      esc(label + '：' + nm) + '"' + (on ? ' aria-disabled="true"' : '') + '>' + esc(on ? '準備中，請稍等…' : label) + '</button>';
-  }
-  // 點了列印：跟雲端服務拿那一位的 PDF → 電腦叫出列印視窗（跟列印站一樣）、平板手機給新分頁打開的連結
-  function myPrint(no, kind) {
-    var d = null, k = no + '|' + kind;
-    arr(myList).forEach(function (x) { x.people.forEach(function (p) { if (Number(p['編號']) === no) d = p; }); });
-    if (!d) return;
-    if (myJob) { showMsg('上一份還在準備，請等一下。', 'warn'); return; }
-    myJob = k;
-    render();
-    api('GET', '/api/mine/packet?' + encodeURIComponent('編號') + '=' + no + '&' + encodeURIComponent('種類') + '=' + encodeURIComponent(kind),
-      null, WAIT_MS.packet, function (r) {
-        if (myJob !== k) return;   // 已經離開這一頁
-        myJob = '';
-        if (view !== 'mine') return;
-        var b = r.ok ? b64Blob(r.data.base64, 'application/pdf') : null, n = r.ok ? Number(r.data['頁數']) || 0 : 0;
-        if (!r.ok && codeRejected(r)) return;
-        if (!b) {
-          render();
-          putMsg(errHTML('myPacket', r.ok ? { code: 'internal', msg: '雲端服務回的檔案是空的。' } : r,
-            ' data-no="' + no + '" data-kind="' + esc(kind) + '"'));
-          return;
-        }
-        if (myUrls[k]) URL.revokeObjectURL(myUrls[k]);
-        myUrls[k] = URL.createObjectURL(b);
-        render();
-        if (TOUCH) { showMsg(kind + '準備好了：按「打開' + kind + '」，在新分頁用「分享」或瀏覽器選單的「列印」。', 'ok'); return; }
-        showMsg('正在叫出「' + str(d['姓名']) + '」的' + kind + (n ? '（共 ' + n + ' 頁）' : '') + '的列印視窗…', 'ok');
-        printUrl(myUrls[k]);
-      });
-  }
-
   // ---------- 下載申請文件、信封（亞拿 11/17；DOC_DOWNLOAD 開了才有，WORD_DOWNLOAD 再加 Word） ----------
-  // 做好頁（s＝pp）、列印站（st）、我協助的學員（my）每份文件的列印按鈕下面一排「下載 PDF」「下載 Word」。
-  // 下載 PDF：做好頁本來就有那份（<a download>，就是畫面上這一份）；列印站、我協助的學員每次按都照列印那條通道重新拿
+  // 做好頁（s＝pp）、列印站（st）每份文件的列印按鈕下面一排「下載 PDF」「下載 Word」。
+  // 下載 PDF：做好頁本來就有那份（<a download>，就是畫面上這一份）；列印站每次按都照列印那條通道重新拿
   // （她可能回核對頁改過、換班重產了：記憶體裡的、按列印時拿的都可能是舊的）。
   // 下載 Word：同一次按下去拿到的那份 PDF 傳給雲端 POST /api/word 轉成 docx（雲端不存）。一次只做一份；
   // 存檔用的 blob 約 60 秒後收回（列印站整天開著不累積），離開畫面也收回
@@ -3333,7 +3028,7 @@ p.cn{margin:6px 0 2px}
   function dlNoteHTML() {
     return WORD_ON ? '<p class="hint dlnote">Word 檔可以在電腦上改字再印；<span class="nw">改過的內容不會存回系統。</span></p>' : '';
   }
-  // pdfA：做好頁那顆現成的「下載 PDF」連結（列印站、我協助的學員是按了才去拿的按鈕）
+  // pdfA：做好頁那顆現成的「下載 PDF」連結（列印站是按了才去拿的按鈕）
   function dlRowHTML(s, no, nm, kind, pdfA) {
     return '<div class="dlrow">' + (pdfA || dlBtn(s, no, nm, kind, 'pdf')) + (WORD_ON ? dlBtn(s, no, nm, kind, 'word') : '') + '</div>';
   }
@@ -3342,7 +3037,7 @@ p.cn{margin:6px 0 2px}
     return '<button type="button" class="btn btn2 sm" data-act="dl" data-s="' + s + '" data-no="' + no + '" data-kind="' + esc(kind) + '" data-f="' + f + '" aria-label="' +
       esc(label + '：' + kind + '：' + nm) + '"' + (on ? ' aria-disabled="true"' : '') + '>' + (on ? '準備中…' : label) + '</button>';
   }
-  // 存檔的連結都收回，做到一半的不算了（換畫面、換寫手、列印站離開、我協助的學員重新整理）
+  // 存檔的連結都收回，做到一半的不算了（換畫面、換寫手、列印站離開）
   function dlReset() {
     dlUrls.forEach(function (u) { URL.revokeObjectURL(u); });
     dlUrls = []; dlJob = ''; dlSeq++;
@@ -3351,13 +3046,12 @@ p.cn{margin:6px 0 2px}
     var nm = null;
     if (s === 'pp') return view === 'screen' && state.pos === PRINT ? nameOf() : null;
     if (s === 'st' && view === 'station') arr(stList).forEach(function (x) { if (Number(x['編號']) === no) nm = str(x['姓名']); });
-    if (s === 'my' && view === 'mine') arr(myList).forEach(function (x) { x.people.forEach(function (p) { if (Number(p['編號']) === no) nm = str(p['姓名']); }); });
     return nm;
   }
-  // 那一份 PDF → cb(blob)；拿不到 cb(null, r)。列印站、我協助的學員每次都重新拿（不留）
+  // 那一份 PDF → cb(blob)；拿不到 cb(null, r)。列印站每次都重新拿（不留）
   function dlPdf(s, no, kind, cb) {
     if (s === 'pp') { var f = files[kind === '信封' ? 'pdf_env' : 'pdf_print']; cb(f && f.blob || null, { code: 'internal', msg: '申請文件沒有存到，要再產生一次。' }); return; }
-    api('GET', (s === 'st' ? '/api/packet?' : '/api/mine/packet?') + encodeURIComponent('編號') + '=' + no + '&' + encodeURIComponent('種類') + '=' + encodeURIComponent(kind),
+    api('GET', '/api/packet?' + encodeURIComponent('編號') + '=' + no + '&' + encodeURIComponent('種類') + '=' + encodeURIComponent(kind),
       null, WAIT_MS.packet, function (r) {
         var b = r.ok ? b64Blob(r.data.base64, 'application/pdf') : null;
         cb(b, r.ok ? { code: 'internal', msg: '雲端服務回的檔案是空的。' } : r);
@@ -3391,7 +3085,7 @@ p.cn{margin:6px 0 2px}
     if (s === 'st' && Date.now() - stChanged < ST_GUARD) { showMsg('名單剛剛更新了，請再看一次名字，再按一次。', 'warn'); return; }
     var base = kind + '_' + (nm || '學員'), attrs = ' data-s="' + s + '" data-no="' + no + '" data-kind="' + esc(kind) + '" data-f="' + f + '"';
     function end() { if (my !== dlSeq) return false; dlJob = ''; render(); return true; }   // 還在同一個畫面：按鈕變回來
-    // 存檔：列印站、我協助的學員那個人已經不在名單上（名單在等的時候更新了）就不存
+    // 存檔：列印站那個人已經不在名單上（名單在等的時候更新了）就不存
     function save(b, ext) {
       if (!end()) return;
       if (s !== 'pp' && dlName(s, no) === null) { showMsg('「' + nm + '」已經不在名單上，沒有下載。', 'warn'); return; }
@@ -3432,7 +3126,7 @@ p.cn{margin:6px 0 2px}
     if (view === 'code') h = codeHTML();
     else if (view === 'wait') h = waitHTML();
     else if (view === 'station') h = stationHTML();
-    else if (view === 'mine') h = mineHTML();                                         // 我協助的學員（KNOWN 202）
+    else if (view === 'lline') h = lPageHTML();                                      // 保健課 LINE 報名名單（第二層，11/25）
     else if (view === 'gqr') h = gQrHTML();                                           // 多人一起報名（10/22）：店裡電腦的 QR
     else if (view === 'gsend') h = gSendingHTML();                                    // 手機：送出中
     else if (G_TOKEN && (state.g || gBad)) h = state.g ? gDoneHTML() : gBadHTML();    // 手機：你是第 N 號／這張 QR 不能用
@@ -3445,8 +3139,9 @@ p.cn{margin:6px 0 2px}
     notice = '';
     flash = '';
     jobNote = '';
-    app.className = 'wrap' + ((view === 'screen' && state.pos >= REVIEW) || view === 'station' || view === 'mine' ? ' wide' : '');
+    app.className = 'wrap' + ((view === 'screen' && state.pos >= REVIEW) || view === 'station' ? ' wide' : '');
     app.innerHTML = (API ? '' : '<p class="tm" role="note">測試模式：沒有連雲端服務，資料不會送出</p>') + writerBarHTML() + h;
+    if (!G_TOKEN) document.title = formTitle() + '｜報名資料表';   // 分頁上的標題（保健課的人不寫 AI 課）
     shownAt = Date.now();
     var q = curQ();
     if (q) { updateFollow(q); updateNext(q, true); }
@@ -3460,7 +3155,6 @@ p.cn{margin:6px 0 2px}
     if (view === 'screen' && state.pos === REVIEW && state.fix && API && !jdTried) { jdTried = true; judgeNow(); }
     if (view === 'screen' && state.pos === REVIEW) secScan();
     gAfterRender();   // 多人一起報名：開場頁、QR 畫面上的名單（太久沒更新才問雲端）
-    if (view === 'screen' && state.pos === 0 && !G_TOKEN) myCountSoon();   // 開始畫面「我協助的學員」幾位要問進度（#388；沒有寫手的那一家不問）
   }
 
   function go(p) {
@@ -3814,7 +3508,7 @@ p.cn{margin:6px 0 2px}
     batchLoading = true;
     batchErr = null;
     if (!API) { setTimeout(function () { if (my === batchSeq) { batchLoading = false; gotBatches(sampleBatches()); } }, 200); return; }
-    var path = '/api/batches' + (state.lineId ? '?' + encodeURIComponent('管道') + '=' + encodeURIComponent(LINE_CH) : '');   // 雲端照管道只回那一種
+    var path = '/api/batches' + (isHealth() ? '?' + encodeURIComponent('管道') + '=' + encodeURIComponent(LINE_CH) : '');   // 雲端照管道只回那一種
     api('GET', path, null, WAIT_MS.batches, function (r) {
       if (my !== batchSeq) return;
       batchLoading = false;
@@ -3833,7 +3527,7 @@ p.cn{margin:6px 0 2px}
     list.forEach(function (b, i) {
       b = obj(b);
       var d = normDate(b['開課日']);
-      if ((b['管道'] === LINE_CH) !== !!state.lineId) return;
+      if ((b['管道'] === LINE_CH) !== isHealth()) return;   // 合作單位的代碼：雲端只回她那家的保健課梯次
       if (b['梯次'] && d && d >= today) keep.push({ b: b, d: d, i: i });
     });
     keep.sort(function (x, y) { return x.d < y.d ? -1 : x.d > y.d ? 1 : x.i - y.i; });
@@ -4157,7 +3851,7 @@ p.cn{margin:6px 0 2px}
   var G_RETRY_MS = [2000, 4000, 6000, 10000, 15000, 20000, 30000, 30000];   // 送草稿沒成功、可以重試的：等這麼久自動再送（約 2 分鐘內 8 次）
   var G_EVERY = 20000;     // 店裡電腦：開場頁、QR 畫面的名單每 20 秒更新
   var G_GUARD = 1500;      // 名單剛變（多了一位、有人做好了）這段時間內點名字不算，免得載到別人的
-  var G_GUARDED = { gSend: 1, gLoad: 1, gLoadYes: 1, gPick: 1, gLine: 1, gLineYes: 1 };   // 換畫面 0.4 秒內點不算（同 GUARDED）
+  var G_GUARDED = { gSend: 1, gLoad: 1, gLoadYes: 1, gPick: 1, gLine: 1, gLineYes: 1, lPage: 1 };   // 換畫面 0.4 秒內點不算（同 GUARDED）
   var G_BAD = {   // 手機：這張 QR 不能用（標題、說明；一小段一小段不拆開換行）
     expired: [['這個 QR code', '已經過期了'], ['請重新掃一次', '今天的 QR code。']],
     wrong: [['這個 QR code 不對'], ['請重新掃一次', '今天的 QR code。']],
@@ -4319,7 +4013,7 @@ p.cn{margin:6px 0 2px}
   function gHomeHTML() {
     var busy = state.fill && (state.fillNo || state.lineId) ? '<div class="box ok"><p>正在幫 <b>' + esc(fillWho()) + '</b> 補資料。</p>' +
       '<button type="button" class="btn" data-act="gBackTo">繼續幫 ' + esc(fillWho()) + '</button></div>' : '';
-    return busy + '<div id="glist">' + gListHTML() + '</div><div id="llist">' + lListHTML() + '</div>' +
+    return busy + '<div id="glist">' + gListHTML() + '</div>' +
       (API ? '<div class="foot"><button type="button" class="btn btn2" data-act="gQr">多人一起報名：產生 QR code</button></div>' : '');
   }
   function gListHTML() {
@@ -4355,7 +4049,7 @@ p.cn{margin:6px 0 2px}
   }
   // 名單：開場頁、QR 畫面才問雲端（太久沒更新才問；force＝按了重新整理）。只有內容變了才重畫那一塊
   function gListLoad(force) {
-    if (!API || TOUCH || G_TOKEN || gListBusy || (gListOff && !force) || codeMissing()) return;
+    if (!API || TOUCH || G_TOKEN || partnerOn || gListBusy || (gListOff && !force) || codeMissing()) return;
     if (!force && Date.now() - gListAt < G_EVERY / 2) return;
     gListBusy = true;
     api('GET', '/api/group/list', null, G_WAIT.list, function (r) {
@@ -4376,7 +4070,7 @@ p.cn{margin:6px 0 2px}
   }
   function gAfterRender() {
     if ((view === 'screen' && state.pos === 0 && !G_TOKEN) || (view === 'gqr' && gq.qr)) gListLoad(false);
-    if (view === 'screen' && state.pos === 0 && !G_TOKEN) lListLoad(false);
+    if (((view === 'screen' && state.pos === 0) || view === 'lline') && !G_TOKEN) lListLoad(false);
     if (lineWant && view === 'screen' && state.pos === 0 && !G_TOKEN && !codeMissing() && !lLoading) {   // #line= 打開的：載入她（一次）
       var id = lineWant;
       lineWant = '';
@@ -4451,8 +4145,10 @@ p.cn{margin:6px 0 2px}
     if (!API || TOUCH || G_TOKEN) return '';
     var all = arr(lList && lList['人們']).map(obj);
     var away = lLoading && !all.some(function (p) { return str(p.id) === lLoading; });   // 後台點的、名單上還沒有她（名單還沒讀到）
-    if (!all.length && !lErr && !away && !lAsk) return '';
-    var h = '<h2 class="st">台中 LINE 報名、還沒做的</h2>';
+    var again = '<button type="button" class="alt" data-act="gLineReload">重新整理名單</button>';
+    if (!all.length && !lErr && !away && !lAsk) return lListOff ? '<p class="hint">這台的通關碼看不到保健課 LINE 報名名單（要用店裡電腦的通關碼）。</p>'
+      : (lList ? '<p class="hint">現在沒有還沒做的 LINE 報名。</p>' : '<p class="hint">正在讀名單，請稍等…</p>') + again;
+    var h = '';
     if (away) h += '<div class="box warn" role="status"><p>正在拿後台點的那一位的資料，請稍等…</p></div>';
     if (all.length) {
       h += '<p class="hint">點她的名字：她在 LINE 答過的題目會帶進來，<span class="nw">接著拍身分證、補地址、勞保。</span></p><ol class="glist">' +
@@ -4464,7 +4160,22 @@ p.cn{margin:6px 0 2px}
         }).join('') + '</ol>';
     }
     var box = lAsk ? lAskHTML(all) : lErr;
-    return h + (box ? '<div id="llerr">' + box + '</div>' : '') + '<button type="button" class="alt" data-act="gLineReload">重新整理名單</button>';
+    return h + (box ? '<div id="llerr">' + box + '</div>' : '') + again;
+  }
+  // 11/25（Tomi：LINE 報名這條路已經不成立，開始畫面那一整排是負擔）：開始畫面只留一行小連結，點進去才是名單（第二層 view 'lline'）
+  function lLinkHTML() {
+    if (!API || TOUCH || G_TOKEN || partnerOn || lListOff) return '';
+    var n = lList ? arr(lList['人們']).length : 0;
+    if (!n && !lErrList) return '';   // 同以前：沒有人（或還沒讀到）就什麼都不放；讀不到才放（點進去看原因、重新整理）
+    return '<div class="foot"><button type="button" class="linkbtn" data-act="lPage">LINE 報名名單' + (n ? '（' + n + ' 位）' : '（讀不到）') + '</button></div>';
+  }
+  function lPageHTML() {
+    return '<h1>保健課 LINE 報名、<span class="nw">還沒做的</span></h1><div id="llist">' + lListHTML() + '</div>' +
+      '<div class="foot"><button type="button" class="btn btn2" data-act="lHome">回開始畫面</button></div>';
+  }
+  function lPaint() {   // 名單那一塊：第二層畫整份、開始畫面只更新小連結的人數
+    if (view === 'lline') setHTML('llist', lListHTML());
+    else if (view === 'screen' && state.pos === 0) setHTML('llist', lLinkHTML());
   }
   // 點她（或 #line= 打開）時這台電腦上有人做到一半：先問。名字畫的時候才從名單找（#line= 打開時名單常常比詢問晚到，到了就寫得出她的名字）
   function lAskHTML(all) {
@@ -4476,7 +4187,7 @@ p.cn{margin:6px 0 2px}
       '<button type="button" class="btn btn2" data-act="gLineNo">回去繼續做</button></div>';
   }
   function lListLoad(force) {
-    if (!API || TOUCH || G_TOKEN || lListBusy || (lListOff && !force) || codeMissing()) return;
+    if (!API || TOUCH || G_TOKEN || partnerOn || lListBusy || (lListOff && !force) || codeMissing()) return;
     if (!force && Date.now() - lListAt < G_EVERY / 2) return;
     lListBusy = true;
     api('GET', '/api/line/list', null, G_WAIT.list, function (r) {
@@ -4492,8 +4203,8 @@ p.cn{margin:6px 0 2px}
       } else if (r.code === 'store_code' || r.status === 404) {   // 不是店裡的通關碼、雲端還是舊版：不放這一塊
         if (lErrList) { lErr = ''; lErrList = false; }
         lListOff = true;
-      } else { lErr = gErrBox(gWhy(r, '讀取台中 LINE 報名'), RETRY[r.code] ? 'gLineReload' : ''); lErrList = true; }
-      if (view === 'screen' && state.pos === 0) setHTML('llist', lListHTML());
+      } else { lErr = gErrBox(gWhy(r, '讀取保健課 LINE 報名'), RETRY[r.code] ? 'gLineReload' : ''); lErrList = true; }
+      lPaint();
     });
   }
   function lLoad(id, sure, byHash) {
@@ -4501,22 +4212,45 @@ p.cn{margin:6px 0 2px}
     if (state.fill && state.lineId === id) { lErr = ''; lAsk = ''; lineBack = -1; go(nextGap(1)); return; }   // 點的是正在幫的那一位：接著做
     if (!sure && (Object.keys(state.a).length || Object.keys(files).length || state.docs.length || state.noLabor || state.rid)) {
       lAsk = id; lErr = ''; lErrList = false;
-      setHTML('llist', lListHTML());
+      lShow();
       scrollToEl(document.getElementById('llerr'));
       return;
     }
     lLoading = id; lErr = ''; lErrList = false; lAsk = '';
-    setHTML('llist', lListHTML());
+    lShow();
     api('GET', '/api/line/load?id=' + encodeURIComponent(id), null, G_WAIT.load, function (r) {
       lLoading = '';
-      if (view !== 'screen' || state.pos !== 0) return;
+      if (view !== 'lline') return;
       if (r.ok) { lTake(r.data); return; }
       if (byHash && r.code === 'store_code') lineWant = id;   // 通關碼不對：換好了再載一次（#line= 打開的）
       if (codeRejected(r)) return;
       lErr = gErrBox(gWhy(r, '拿她的資料'), RETRY[r.code] ? 'gLine' : '', ' data-id="' + esc(id) + '"'); lErrList = false;
-      setHTML('llist', lListHTML());
+      lPaint();
       scrollToEl(document.getElementById('llerr'));
     });
+  }
+  // 保健課：她在 LINE 答的「學完想怎麼用這個技能」（想做的工作）換回這裡的選項，核對頁那排選項才會亮她選的；輸出的字跟 LINE 一樣
+  // （選項、輸出用字同一套）。有一段對不上就照舊用 LINE 的字（lineText）
+  function lineJobSel(out) {
+    var q = qById('wantJob'), v = out[q.id], sel = [], t = '';
+    if (typeof v !== 'string') return;
+    var ok = v.split('、').every(function (part) {
+      var m = part.match(/^其他（(.*)）$/), o = q.opts.filter(function (x) { return m ? !!x.f : !x.f && outT(x) === part; })[0];
+      if (!o || sel.indexOf(o.t) >= 0) return false;
+      if (m) t = m[1] === '未填' ? '' : m[1];
+      sel.push(o.t);
+      return true;
+    });
+    if (!ok || sel.length > q.max) return;
+    state.a[q.id] = sel;
+    if (t) state.a[q.id + '_t'] = t;
+    delete out[q.id];
+  }
+  function lShow() {
+    if (view === 'lline') { setHTML('llist', lListHTML()); return; }
+    view = 'lline';
+    render();
+    try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
   }
   function lTake(d) {
     var lines = {}, out = {};
@@ -4531,6 +4265,7 @@ p.cn{margin:6px 0 2px}
       else if (q.type === 'single' || q.type === 'multi') out[q.id] = v;
     });
     state.lineId = str(d.id); state.lineOut = out;
+    lineJobSel(out);
     lineBack = -1;
     state.fill = true;
     state.fillQs = QS.filter(gapOf).map(function (q) { return q.id; });   // 電腦上只補這幾題
@@ -4638,9 +4373,15 @@ p.cn{margin:6px 0 2px}
     else if (act === 'gLineYes') lLoad(el.getAttribute('data-id'), true);
     else if (act === 'gLineNo') {   // #line= 打開時這台電腦上有人做到一半：回到她原本的畫面（「歡迎回來」）
       lErr = ''; lAsk = '';
-      if (lineBack > 0) { state.pos = lineBack; lineBack = -1; view = 'welcome'; render(); } else setHTML('llist', lListHTML());
+      if (lineBack > 0) { state.pos = lineBack; lineBack = -1; view = 'welcome'; render(); } else lPaint();
     }
     else if (act === 'gLineReload') { lErr = ''; lErrList = false; lListLoad(true); }
+    else if (act === 'lPage' || act === 'lHome') {   // LINE 報名名單（第二層）進出
+      if (act === 'lHome') { lAsk = ''; if (!lErrList) lErr = ''; }
+      view = act === 'lPage' ? 'lline' : 'screen';
+      render();
+      try { window.scrollTo(0, 0); } catch (e) { /* 舊瀏覽器 */ }
+    }
     else if (act === 'gQr') gQrOpen();
     else if (act === 'gQrBatches') { gQrBatches(); render(); }
     else if (act === 'gPick') gQrMake(Number(el.getAttribute('data-i')));
@@ -4708,7 +4449,7 @@ p.cn{margin:6px 0 2px}
     return null;
   }
   var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, edit: 1, batch: 1, gen: 1, codeOk: 1, endAsk: 1, nextAsk: 1, reeditAsk: 1,
-    station: 1, stPrint: 1, stMine: 1, retry: 1, noLabor: 1, noId: 1, useId: 1, redo: 1, mine: 1, myPrint: 1, dl: 1, myAsk: 1, myDo: 1, myMore: 1 };
+    station: 1, stPrint: 1, retry: 1, noLabor: 1, noId: 1, useId: 1, redo: 1, dl: 1 };
 
   app.addEventListener('click', function (e) {
     var el = actEl(e.target);
@@ -4774,15 +4515,6 @@ p.cn{margin:6px 0 2px}
       case 'stReload': stWake(true); break;
       case 'stPrint': stPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind')); break;
       case 'stExit': closeStation(); break;
-      case 'stMine': stStop(); openMine(); break;   // 列印站只認店裡的碼（KNOWN 204）：寫手改去「我協助的學員」
-      case 'mine': openMine(); break;                // 我協助的學員（KNOWN 202）
-      case 'myReload': myLoad(); break;
-      case 'myPrint': myPrint(Number(el.getAttribute('data-no')), el.getAttribute('data-kind')); break;
-      case 'myExit': closeMine(); break;
-      case 'myAsk': myAsk(Number(el.getAttribute('data-no')), el.getAttribute('data-step')); break;   // 寫手回報（#388）：同一格確認
-      case 'myDo': myDo(); break;
-      case 'myCancel': myCancel(); break;
-      case 'myMore': myMore[el.getAttribute('data-no')] = !myMore[el.getAttribute('data-no')]; render(); break;   // 要再印申請文件、信封
       case 'dl': dlGo(el.getAttribute('data-s'), Number(el.getAttribute('data-no')), el.getAttribute('data-kind'), el.getAttribute('data-f')); break;   // 下載 PDF／Word
       default: gAct(act, el);   // 多人一起報名（10/22）的按鈕：g 開頭
     }
@@ -4790,7 +4522,6 @@ p.cn{margin:6px 0 2px}
 
   app.addEventListener('input', function (e) {
     var t = e.target, fp = t && t.getAttribute && t.getAttribute('data-fix');
-    if (myInput(t)) return;   // 我協助的學員：確認那一格的寄出日、原因（#388）
     if (fp && state.fix) {   // 核對頁改欄位（不整頁重畫，游標才不會跑掉）
       setFix(fp, t.value);
       if (fp === '通訊地址') {
@@ -4829,7 +4560,6 @@ p.cn{margin:6px 0 2px}
   // 拍好照片、選好檔案；核對頁的日期、字號打完整理格式
   app.addEventListener('change', function (e) {
     var t = e.target, fp = t && t.getAttribute && t.getAttribute('data-fix');
-    if (myInput(t)) return;   // 日期框選完（有的瀏覽器只發 change）
     if (fp && state.fix) {
       var v = normFix(fp, t.value);
       if (v !== t.value) {
@@ -4912,7 +4642,7 @@ p.cn{margin:6px 0 2px}
     LINE_WANT = '';
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 網址沒改也照常 */ }
     if (!API) return;
-    if (TOUCH) { if (view === 'screen' && state.pos === 0) notice = '「開始做申請文件」要用店裡的電腦打開（手機、平板不能載入台中 LINE 報名的人）。'; return; }
+    if (TOUCH) { if (view === 'screen' && state.pos === 0) notice = '「開始做申請文件」要用店裡的電腦打開（手機、平板不能載入保健課 LINE 報名的人）。'; return; }
     if (state.fill && state.lineId === id) return;
     lineWant = id;
     if (view === 'welcome') lineBack = state.pos;
