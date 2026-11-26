@@ -566,7 +566,8 @@ p.cn{margin:6px 0 2px}
   // （「問題當然是越少越好」；想做的工作用保健課那套選項），她答的照她的字送、雲端補問卷不蓋（判讀.補問卷 只補沒答的）。兩條路（從名單選、
   // 全新報名）都一樣。最後一份工作照舊在核對頁卡片上確認。其他題資料表照舊每一行都有（沒問的寫「（未填）」，雲端補）；LINE 帶進來、她在 LINE
   // 答過的那幾題照樣列、照樣送
-  var HEALTH_ASK = ['idFront', 'idBack', 'idNum', 'idBirth', 'idAddr', 'name', 'phone', 'email', 'live', 'edu', 'pastJobs', 'wantJob', 'labor', 'introducer', 'batch'];
+  // 專長（skill）11/26 加回：Tomi 看申請書範本問「為什麼專長也是空白的」→「要，加回來」（KNOWN 235）
+  var HEALTH_ASK = ['idFront', 'idBack', 'idNum', 'idBirth', 'idAddr', 'name', 'phone', 'email', 'live', 'edu', 'skill', 'pastJobs', 'wantJob', 'labor', 'introducer', 'batch'];
   // 保健課「全新報名」（合作單位的代碼、沒有從名單選）要不要改回平常每題問（Tomi 11/25 還在決定，先不改）：false＝跟從名單選的一樣只問 HEALTH_ASK；
   // 要改就只把這一行換成 true：全新報名每題都問，只有 AI 課專用的四題（HEALTH_SKIP）不問；從名單選的、LINE 帶入的照舊只問 HEALTH_ASK。
   // 雲端不用跟著改（判讀.補問卷 只補她沒答的）
