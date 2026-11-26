@@ -35,6 +35,9 @@ var WORD_DOWNLOAD = true;
 // 保健課事先建檔的名單（2026-11-25；公司設定 報名網頁.合作單位代碼）：false＝沒有（正本、沒開的那一家：不問名單、開始畫面跟以前一樣）；
 // true＝店裡碼、合作單位的代碼有事先建檔的學員時，開始畫面多「已有勞保資料的學員（從名單選）」。發布.py 發給開了的那一家時把這一行換成 true
 var PRELOAD = true;
+// 截止後可補報（主辦 11/25；公司設定 報名網頁.截止後可補報）：false＝照舊，已截止的梯次灰掉寫「已截止，不能選」（正本、沒開的那一家）；
+// true＝雲端說「可補報」的（過了報名截止日、離開課日還有 20 天以上）收在選梯次最下面、可以選，其他已截止的不列。發布.py 發給開了的那一家時把這一行換成 true
+var LATE_SIGNUP = false;
 // 現場通關碼：true＝第一次在這台電腦打開要輸入一次（記在這台電腦），每個請求帶 X-Store-Code 標頭；
 // false＝不問、不帶（雲端服務那邊的檢查也要一起拿掉）
 var 需要通關碼 = true;
@@ -114,6 +117,14 @@ h1{font-size:32px;line-height:1.35;font-weight:800;margin:32px 0 20px}
 .rgs .pk{flex:1 1 calc(50% - 5px);min-height:60px;padding:6px 8px;font-size:20px;text-align:center}
 @media (min-width:600px){.rgs .pk{flex:1 1 0}}
 .rgh{margin:10px 0 0}
+/* 截止後可補報（LATE_SIGNUP）：清單最下面一塊，標題整排可點（粗框、▸▾），打開後梯次跟上面一樣寬；卡片最後一行黃字（字也寫清楚，不只靠顏色） */
+.lateb{margin:30px 0 0}
+.lateb>summary{display:flex;align-items:center;min-height:64px;padding:8px 14px;border:3px solid var(--ink2);border-radius:14px;background:#fff;font-size:22px;font-weight:800;cursor:pointer;list-style:none}
+.lateb>summary::-webkit-details-marker{display:none}
+.lateb>summary::before{content:"▸";margin-right:10px}
+.lateb[open]>summary::before{content:"▾"}
+.lateb[open]>summary{margin-bottom:14px}
+.b3.late{color:var(--warn)}
 
 /* 輸入框 */
 .flabel{display:block;font-size:22px;font-weight:800;margin:8px 0}
@@ -446,7 +457,7 @@ p.cn{margin:6px 0 2px}
     { id: 'phone', type: 'text', req: true, kind: 'tel', out: '手機',
       title: '你的手機號碼', hint: '10 個數字，09 開頭' },
     { id: 'email', type: 'text', req: true, kind: 'email', out: 'Email',
-      title: '你的 Email 信箱', hint: '申請表必填。看手機上登入的 Email；真的沒有，填家人的。' },
+      title: '你的 Email 信箱', hint: '申請表必填。若申請人不知道自己的 Email，可請其查看手機內的 Gmail、Google Play 或 App Store 帳號。' },
     // 戶籍地址不問：從身分證背面讀（規格 v3）
     { id: 'live', type: 'single', out: '通訊地址',
       title: '現在住的地址跟身分證上一樣嗎？', opts: [
@@ -520,8 +531,9 @@ p.cn{margin:6px 0 2px}
     { id: 'labor', type: 'docs', fileKind: '勞保資料', title: '上傳勞保資料',
       hint: '下載「勞保(就保、災保)異動查詢」PDF，只有總覽不夠\n有農保的，\n農保那頁也下載、一起選\n' +
         '從來沒保過勞保、農保\n（勞保局查無資料）的，\n不用下載，按下面的\n「沒有任何勞保、農保紀錄」' },
-    // 選梯次（v4）：到這一題才問雲端服務哪幾梯還能報
-    { id: 'batch', type: 'batch', short: '上課梯次', title: '選上課梯次', hint: '只能選「開放報名」的梯次' }
+    // 選梯次（v4）：到這一題才問雲端服務哪幾梯還能報（截止後可補報的那一家：已截止還來得及的也能選，提示跟著講）
+    { id: 'batch', type: 'batch', short: '上課梯次', title: '選上課梯次',
+      hint: '只能選「開放報名」的梯次', lateHint: '選「開放報名」的梯次；\n已過報名截止日、還來得及的收在最下面' }
   ];
   // 介紹人（KNOWN 192，主辦 11/17）：ASK_INTRODUCER 是 true 的那一家（發布時換的那一行）才多這一題，放在選梯次前面。打字、可以跳過
   // （不用選的、沒有「沒有介紹人」）；有打才在資料表多一行「介紹人：<全名>」（buildText）。現場人員問：不在 G_QS，手機一起報名到電腦前才問。
@@ -560,18 +572,16 @@ p.cn{margin:6px 0 2px}
   }
   (function () {
     var q = qById('wantJob'), ai = q.opts, aiTitle = q.title;
+    // 11/26 Tomi：保健不一定是調理，照護、居家照護、復健、美容美體這類相關工作都可以（要證照的只當之後再進修的目標，寫在計畫書規則）
     var health = [{ t: '到店裡做調理工作', o: '保健調理人員' }, { t: '自己接案或開工作室', o: '自行接案' },
+      { t: '照護工作', n: '居家照護、長照機構', o: '照護相關工作' }, { t: '復健科、物理治療所的助理', o: '復健相關工作' },
+      { t: '美容美體', o: '美容美體' },
       { t: '加進原本的工作', n: '美容、美髮、照顧', o: '結合原有工作' }, other()];
     Object.defineProperty(q, 'opts', { get: function () { return isHealth() ? health : ai; } });
     Object.defineProperty(q, 'title', { get: function () { return isHealth() ? '學完想怎麼用這個技能？' : aiTitle; } });
     q.optsFor = function (h) { return h ? health : ai; };   // 重新打開時的檢查（sanitize）：那時 state 還沒換成存的那一份，照存的 lineId 選
   })();
-  // Email：保健課選填（申請表那一格留白也做得出文件，Working Rule 9），其他照舊必填
-  (function () {
-    var q = qById('email'), hint = q.hint;
-    Object.defineProperty(q, 'req', { get: function () { return !isHealth(); } });
-    Object.defineProperty(q, 'hint', { get: function () { return isHealth() ? '選填，沒有可以跳過。' : hint; } });
-  })();
+  // Email：保健課也必填（Tomi 11/26 親口「Email 一定要設為必填喔，沒有必填的話會非常麻煩」；11/25 曾設選填）
   // 勞保資料：從「已有勞保資料的學員」名單點進來、還沒改成自己重傳的（preUse，11/25）標題寫「勞保資料」、不放怎麼下載的說明
   (function () {
     var q = qById('labor'), title = q.title, hint = q.hint;
@@ -970,7 +980,7 @@ p.cn{margin:6px 0 2px}
     }
     if (q.type === 'batch') {
       if (state.batch) return '';
-      return batches && !openCount() ? '目前沒有開放報名的梯次。' : '請點一個梯次。';
+      return batches && !openCount() && !lateIn(batches, 'all') ? '目前沒有開放報名的梯次。' : '請點一個梯次。';
     }
     if (q.type === 'range') {   // 兩格都要寫；日期寫法只提醒、不擋（onNext 的 rangeOdd）
       if (!clean(state.a[q.id + '_from']) || !clean(state.a[q.id + '_to'])) return '「從」「到」兩格都要寫。\n記不清楚的，寫大概的就好。';
@@ -978,7 +988,7 @@ p.cn{margin:6px 0 2px}
     }
     if (q.type === 'text') {
       var v = textOf(q);
-      if (q.kind === 'email' && !v && !q.req) return '';   // 保健課：Email 選填
+      if (q.kind === 'email' && !v && !q.req) return '';   // 不是必填的 Email 沒填（現在都必填，留著給 req 改回 false）
       if (q.kind === 'tel') {
         if (!v) return '請寫你的手機號碼。';
         if (!/^09\d{8}$/.test(v)) return '號碼好像不對，請再看一下。手機號碼是 09 開頭、10 個數字。';
@@ -1014,6 +1024,7 @@ p.cn{margin:6px 0 2px}
   var softOk = '';              // 從、到寫法看不懂時已經提醒過的那組字（同樣的字再按一次就照寫）
   var docsLost = 0, pdfLost = false, docSeq = 0;   // 重新打開時沒拿回來的勞保檔個數、申請文件
   var batches = null, batchErr = null, batchLoading = false, batchGone = '', batchSeq = 0;   // 梯次（batchErr＝沒讀到時雲端的回應）
+  var lateOpen = null, lateShown = false;   // 截止後可補報那一塊（畫面用、不存）：寫手按的打開／收起（null＝照預設）、這次畫成打開了沒
   var waitKind = '';
 
   function curQ() { return view === 'screen' && state.pos >= 1 && state.pos <= N ? QS[state.pos - 1] : null; }
@@ -1315,7 +1326,7 @@ p.cn{margin:6px 0 2px}
     var h = topHTML(state.pos), tt = titleOf(q);
     h += '<h2 class="qt" id="qt" tabindex="-1">' + (isArr(tt) ? tt.map(function (s) { return '<span class="nw">' + esc(s) + '</span>'; }).join('') : esc(tt)) + '</h2>';
     if (q.how) h += '<p class="how">' + esc(q.how) + '</p>';   // 標題下面的藍字（介紹人那一題，KNOWN 192）
-    if (q.hint) h += '<p class="hint">' + escBr(q.hint) + '</p>';
+    if (q.hint) h += '<p class="hint">' + escBr(q.lateHint && lateMode() ? q.lateHint : q.hint) + '</p>';   // 截止後可補報（保健課那幾條路照原本的）
     if (G_TOKEN && q.id === 'live') h += '<p class="hint">不一樣的話，地址等一下到電腦前再寫</p>';   // 手機一起報名：地址不在手機上打（10/22 驗收）
     if (q.plan && !G_TOKEN) h += '<p class="hint">這題會寫進計畫書，請帶她想清楚</p>';   // 給現場人員看，不輸出（學員自己的手機上不放）
     if (q.type === 'single') h += '<p class="how">點一個答案</p>';
@@ -1424,6 +1435,28 @@ p.cn{margin:6px 0 2px}
   function ownerLine(b) {
     return str(b['開班']) ? '<span class="b2">開班：' + esc(str(b['開班'])) + '</span>' : '';
   }
+  // 截止後可補報（主辦 11/25；只有 LATE_SIGNUP 是 true 的那一家、一般報名；保健課那幾條路〔isHealth：LINE 報名、合作單位的代碼、已有勞保資料的名單，只列合作單位的梯次〕照舊）：雲端說「可補報」的已截止梯次（離開課日還有 20 天以上）
+  // 不放在月份裡，收在清單最下面「已過報名截止日的梯次（N）」，可以選、最後一行黃字；其他已截止的（離開課不到 20 天、開課了）不列。
+  // 其他不能選的（設定不完整）照舊灰掉。沒開的那一家 lateOk 一律 false，畫面、行為跟以前一樣
+  function lateMode() { return LATE_SIGNUP === true && !isHealth(); }
+  function lateOk(b) { return lateMode() && b['狀態'] === '已截止' && b['可補報'] === true; }
+  function canPick(b) { return b['狀態'] === '開放報名' || lateOk(b); }
+  function listed(b) { return !lateMode() || b['狀態'] !== '已截止' || lateOk(b); }   // 畫得出來的（分區按鈕照這些算）
+  function lateIn(list, r) { return arr(list).filter(function (b) { return lateOk(b) && inRegion(b, r); }).length; }
+  function lateSel() {   // 選好的那一梯是可補報的 → 那一梯；不是 → null
+    var sel = null;
+    if (state.batch) arr(batches).forEach(function (b) { if (b['梯次'] === state.batch['梯次'] && lateOk(b)) sel = b; });
+    return sel;
+  }
+  // 選了可補報的那一梯：放在「下一步」上面的黃框（選的當下就看得到；回來改時照樣在）
+  function lateDays(roc) {   // 今天（台灣時間）到這個民國日期還有幾天（主線 11/26 拿掉「我協助的學員」時 myDays 跟著拿掉了，這裡自己算）
+    var iso = function (t) { return (Number(t.slice(0, 3)) + 1911) + '-' + t.slice(4, 6) + '-' + t.slice(7, 9); }, a = todayTW(), d = normDate(roc);
+    return a && d ? Math.round((Date.parse(iso(d) + 'T00:00:00Z') - Date.parse(iso(a) + 'T00:00:00Z')) / 86400000) : null;
+  }
+  function latePickHTML() {
+    var b = lateSel(), n = b ? lateDays(b['開課日']) : null;
+    return b ? '<div class="box warn"><p>你選的這一梯已過報名截止日，<span class="nw">離開課剩 ' + n + ' 天，</span>申請文件做好要趕快寄出。</p></div>' : '';
+  }
   // 選梯次照區分開（KNOWN 199，主辦 11/17；只有 BATCH_REGIONS 是 true 的那一家）：梯次上面一排區按鈕，下面只列那一區的梯次。
   // 區＝分署（OFFICE_COUNTIES，跟受理分署、切結書預覽同一條 officeOf）：照上課地點的縣市分，認不出縣市的梯次只在「全部」。
   // 按鈕：有梯次的區才有（北到南），字寫那一區有梯次的縣市（例「高雄・屏東」），最後「全部」；梯次都在同一組（每個按鈕列的都一樣）就不畫。
@@ -1455,6 +1488,8 @@ p.cn{margin:6px 0 2px}
     return Object.keys(g).length > 1 ? regionsOf(list) : null;
   }
   function inRegion(b, r) { return r === 'all' || officeOf(b['上課地點']) === r; }
+  // 這一區有沒有梯次可以選：開放報名的；截止後可補報的那一家連可補報的也算（沒開的那一家 lateIn 一律 0＝同 openIn）
+  function pickIn(list, r) { return openIn(list, r) || lateIn(list, r) > 0; }
   function openIn(list, r) { return arr(list).some(function (b) { return b['狀態'] === '開放報名' && inRegion(b, r); }); }
   // 她的通訊地址（到選梯次這一步就知道的才算）：「不一樣」打的地址；「一樣」又是身分證欄位留空的，照卡片打的戶籍地址。
   // 拍了身分證又選「一樣」的，要送出讀了身分證才知道 → ''
@@ -1467,13 +1502,13 @@ p.cn{margin:6px 0 2px}
     if (state.rg === 'all' || rs.indexOf(state.rg) >= 0) return state.rg;
     if (state.batch) arr(list).forEach(function (b) { if (b['梯次'] === state.batch['梯次']) sel = b; });
     if (sel) return officeOf(sel['上課地點']) || 'all';
-    if (mine) return openIn(list, mine) ? mine : 'all';
+    if (mine) return pickIn(list, mine) ? mine : 'all';
     return fromMemory(list, tabs) || 'all';
   }
   // 她的地址認不出區時：這台電腦上次按的區（那一區有開放報名的梯次才算；上次按全部＝全部）
   function fromMemory(list, tabs) {
     var m = lastRegion();
-    return m === 'all' ? 'all' : m && tabs.some(function (x) { return x.r === m; }) && openIn(list, m) ? m : '';
+    return m === 'all' ? 'all' : m && tabs.some(function (x) { return x.r === m; }) && pickIn(list, m) ? m : '';
   }
   function regionHint(list, at, tabs) {
     var a = addrNow(), mine = officeOf(a), cs = countiesOf(a), where = cs.length === 1 ? cs[0] : '';
@@ -1482,7 +1517,7 @@ p.cn{margin:6px 0 2px}
     if (!where) return memTxt || (at === 'all' ? '先列全部梯次；要只看一區，按上面。' : '');
     if (!mine) return '她的通訊地址在' + where + '，不在這幾區' + (memTxt ? '；' + memTxt : '。');
     if (at === mine) return '她的通訊地址在' + where + '，先列' + mine + '的梯次；要看別區按上面。';
-    return '她的通訊地址在' + where + (openIn(list, mine) ? '（' + mine + '）；要看那一區按上面。' : '，' + mine + '現在沒有開放報名的梯次。');
+    return '她的通訊地址在' + where + (pickIn(list, mine) ? '（' + mine + '）；要看那一區按上面。' : '，' + mine + '現在沒有開放報名的梯次。');
   }
   // 選好的梯次不在現在列的這一區（寫手按了別區）：寫一行「已選：…（在…）」，選的那一梯不會看不見
   function pickedHint(at, tabs) {
@@ -1510,31 +1545,52 @@ p.cn{margin:6px 0 2px}
     if (state.lineId) h += '<p class="hint">保健課 LINE 報名的人，<span class="nw">只列「' + esc(LINE_CH) + '」的梯次。</span></p>';
     else if (pt) h += '<p class="hint">只列你們開的保健課梯次。</p>';
     else if (sp) h += '<p class="hint">已有勞保資料的學員，<span class="nw">只列「' + esc(LINE_CH) + '」的梯次。</span></p>';
-    if (!openCount()) h += '<div class="box err"><p>目前沒有開放報名的' + (lc ? '「' + esc(LINE_CH) + '」' : pt ? '保健課' : '') + '梯次。' +
+    var lateAll = lateIn(batches, 'all');   // 截止後可補報（沒開的那一家、保健課那幾條路一律 0）
+    if (!openCount() && !lateAll) h += '<div class="box err"><p>目前沒有開放報名的' + (lc ? '「' + esc(LINE_CH) + '」' : pt ? '保健課' : '') + '梯次。' +
       (lc ? '<br>請先在後台新增梯次，報名管道選「' + esc(LINE_CH) + '」。' : pt ? '<br>請聯絡主辦開班。' : '') + '</p></div>';
-    var tabs = BATCH_REGIONS === true ? regionTabs(batches) : null, at = tabs ? regionAt(batches, tabs) : 'all', tip = tabs ? regionHint(batches, at, tabs) : '';
+    var tabs = BATCH_REGIONS === true ? regionTabs(batches.filter(listed)) : null, at = tabs ? regionAt(batches, tabs) : 'all', tip = tabs ? regionHint(batches, at, tabs) : '';
+    var openAt = openIn(batches, at), lateAt = lateIn(batches, at);
     if (tabs) h += regionTabsHTML(tabs, at, 'batchRg') + (tip ? '<p class="hint rgh">' + esc(tip) + '</p>' : '') +
-      (openCount() && !openIn(batches, at) ? '<div class="box warn"><p>這一區現在沒有開放報名的梯次，按上面的「全部」看別區。</p></div>' : '') + pickedHint(at, tabs);
+      ((openCount() || lateAll) && !openAt && !lateAt ? '<div class="box warn"><p>這一區現在沒有開放報名的梯次，按上面的「全部」看別區。</p></div>' : '') + pickedHint(at, tabs);
+    if (lateAt && !openAt) h += '<div class="box warn"><p>' + (at === 'all' ? '目前' : '這一區目前') + '沒有還在報名期間的梯次；<span class="nw">已過截止日、還來得及的在下面。</span>' +
+      (at !== 'all' && openCount() ? '<br>別區還在報名的，按上面的「全部」看。' : '') + '</p></div>';
     h += '<div class="opts" role="radiogroup" aria-labelledby="qt">';
     var year = todayTW().slice(0, 3), month = '';
     batches.forEach(function (b, i) {
       if (!inRegion(b, at)) return;   // 分區（KNOWN 199）：別區的不畫（data-i 照全部梯次的順序）
+      if (lateMode() && b['狀態'] === '已截止') return;   // 截止後可補報：可補報的收在最下面那一塊，其他已截止的不列
       var d = normDate(b['開課日']);   // gotBatches 只留看得懂的
       if (d.slice(0, 6) !== month) {   // 換月份：上面一行月份（今年的只寫月；別年的寫民國年，跟梯次名稱一樣用民國）
         month = d.slice(0, 6);
         h += '<h3 class="mon">' + (d.slice(0, 3) === year ? '' : Number(d.slice(0, 3)) + ' 年 ') + Number(d.slice(4, 6)) + ' 月</h3>';
       }
-      var ok = b['狀態'] === '開放報名', on = ok && !!state.batch && state.batch['梯次'] === b['梯次'];
-      var left = typeof b['已報人數'] === 'number' ? '已報 ' + b['已報人數'] + ' 位' : '可以報名';   // 名額只當參考（主辦 10/20）
-      var say = str(b['梯次']) + ' ' + str(b['上課時間']) + '，' + (str(b['開班']) ? '開班：' + str(b['開班']) + '，' : '') + (ok ? left : (b['狀態'] || '不能報名') + '，不能選');
-      h += '<button type="button" class="opt bt" data-act="batch" data-i="' + i + '" role="radio" aria-label="' + esc(say) + '" aria-checked="' + (on ? 'true' : 'false') + '"' + (ok ? '' : ' disabled') + '>' +
-        '<span class="mark">' + CHECK + '</span><span class="t">' +
-        '<span class="b1">' + titleSpans(str(b['梯次'])) + ' <span>' + esc(str(b['上課時間'])) + '</span></span>' +
-        '<span class="b2">地點：' + esc(b['上課地點'] || '（未定）') + '</span>' +
-        '<span class="b2">辦訓單位：' + esc(b['辦訓單位'] || '（未定）') + '</span>' + ownerLine(b) +
-        '<span class="b3">' + (ok ? esc(left) : esc(b['狀態'] || '不能報名') + '，不能選') + '</span></span></button>';
+      h += batchBtn(b, i);
     });
-    return h + '</div><button type="button" class="alt" data-act="reloadBatches">重新整理梯次</button>';
+    h += '</div>';
+    var lates = '';   // 截止後可補報：照日期列在最下面一塊（預設收起；這一區沒有還在報名期間的、或選的就是這裡面的，先打開）
+    batches.forEach(function (b, i) { if (lateOk(b) && inRegion(b, at)) lates += batchBtn(b, i); });
+    if (lates) {
+      lateShown = lateOpen === null ? !openAt || !!(lateSel() && inRegion(lateSel(), at)) : lateOpen;
+      h += '<details class="lateb" id="latemore"' + (lateShown ? ' open' : '') + '><summary>已過報名截止日的梯次（' + lateAt + '）</summary>' +
+        '<div class="opts" role="radiogroup" aria-label="已過報名截止日的梯次">' + lates + '</div></details>';
+    }
+    return h + '<button type="button" class="alt" data-act="reloadBatches">重新整理梯次</button>' +
+      (lateMode() ? '<div id="latepick" role="status">' + latePickHTML() + '</div>' : '');
+  }
+  // 梯次一個大按鈕（月份裡、可補報那一塊共用）：只有能選的（開放報名、可補報）能點；可補報的最後一行黃字寫報名截止日
+  function batchBtn(b, i) {
+    var late = lateOk(b), ok = b['狀態'] === '開放報名' || late, on = ok && !!state.batch && state.batch['梯次'] === b['梯次'];
+    var left = typeof b['已報人數'] === 'number' ? '已報 ' + b['已報人數'] + ' 位' : '可以報名';   // 名額只當參考（主辦 10/20）
+    var end = normDate(b['填表截止']);
+    var last = late ? '已過報名截止日' + (end ? '（' + Number(end.slice(4, 6)) + '/' + Number(end.slice(7, 9)) + '）' : '') + '，申請要趕快寄'
+      : ok ? left : (b['狀態'] || '不能報名') + '，不能選';
+    var say = str(b['梯次']) + ' ' + str(b['上課時間']) + '，' + (str(b['開班']) ? '開班：' + str(b['開班']) + '，' : '') + last;
+    return '<button type="button" class="opt bt" data-act="batch" data-i="' + i + '" role="radio" aria-label="' + esc(say) + '" aria-checked="' + (on ? 'true' : 'false') + '"' + (ok ? '' : ' disabled') + '>' +
+      '<span class="mark">' + CHECK + '</span><span class="t">' +
+      '<span class="b1">' + titleSpans(str(b['梯次'])) + ' <span>' + esc(str(b['上課時間'])) + '</span></span>' +
+      '<span class="b2">地點：' + esc(b['上課地點'] || '（未定）') + '</span>' +
+      '<span class="b2">辦訓單位：' + esc(b['辦訓單位'] || '（未定）') + '</span>' + ownerLine(b) +
+      '<span class="b3' + (late ? ' late' : '') + '">' + esc(last) + '</span></span></button>';
   }
 
   function submitHTML() {
@@ -3579,7 +3635,7 @@ p.cn{margin:6px 0 2px}
     if (state.batch) {
       var now = null;
       batches.forEach(function (b) { if (b['梯次'] === state.batch['梯次']) now = b; });
-      if (now && now['狀態'] === '開放報名') state.batch = snap(now);   // 更新剩幾位
+      if (now && canPick(now)) state.batch = snap(now);   // 更新剩幾位（截止後可補報的那一家：可補報的也留著）
       else { batchGone = state.batch['梯次'] + '（' + (now ? now['狀態'] : '已經沒有這一梯') + '）'; state.batch = null; }
       save();
     }
@@ -3593,7 +3649,7 @@ p.cn{margin:6px 0 2px}
   function refreshBatch() { var q = curQ(); if (q && q.type === 'batch') render(); }
   function onBatch(i) {
     var b = arr(batches)[i];
-    if (!b || b['狀態'] !== '開放報名') return;
+    if (!b || !canPick(b)) return;
     state.batch = snap(b);
     delete state.rg;   // 分區（KNOWN 199）：選好了就不記按的區，回來時先列選好的那一梯那一區
     batchGone = '';
@@ -3601,6 +3657,13 @@ p.cn{margin:6px 0 2px}
     var els = app.querySelectorAll('.opt[data-act="batch"]');   // 分區時畫面上只有一部分梯次：照 data-i 對（KNOWN 199）
     for (var k = 0; k < els.length; k++) els[k].setAttribute('aria-checked', Number(els[k].getAttribute('data-i')) === i ? 'true' : 'false');
     hideMsg();
+    var lp = document.getElementById('latepick');
+    if (lp) lp.innerHTML = latePickHTML();
+    if (lateOk(b)) {   // 截止後可補報：不自動往下，先讓她看到「下一步」上面的黃框，再按「下一步：確認資料」
+      updateNext(curQ(), false);
+      scrollToEl(document.getElementById('next'));
+      return;
+    }
     busy = true;   // 讓她看到勾勾再往下
     setTimeout(function () { busy = false; advance(); }, 350);
   }
@@ -4175,7 +4238,7 @@ p.cn{margin:6px 0 2px}
     state.fillQs = QS.filter(gapOf).map(function (q) { return q.id; });   // 電腦上只補這幾題；上一題也只在這幾題之間（主辦 10/23）
     state.fillNo = no; state.fillName = str(d['姓名']); state.fillRid = rid || 0;
     view = 'screen'; confirmChecked = false; working = ''; docsLost = 0; pdfLost = false;
-    batches = null; batchErr = null; batchGone = '';
+    batches = null; batchErr = null; batchGone = ''; lateOpen = null;
     resetReview();
     go(nextGap(1));
     showMsg('已經拿到' + (no ? '第 ' + no + ' 號 ' : '') + str(d['姓名']) + ' 在手機上填的答案和身分證照片。\n接著補還沒答的題目。', 'ok');
@@ -4319,7 +4382,7 @@ p.cn{margin:6px 0 2px}
     state.fillQs = QS.filter(gapOf).map(function (q) { return q.id; });   // 電腦上只補這幾題
     state.fillNo = 0; state.fillName = str(d['姓名']); state.fillRid = 0;
     view = 'screen'; confirmChecked = false; working = ''; docsLost = 0; pdfLost = false;
-    batches = null; batchErr = null; batchGone = '';
+    batches = null; batchErr = null; batchGone = ''; lateOpen = null;
     resetReview();
     go(nextGap(1));
     showMsg('已經拿到' + str(d['姓名']) + ' 在 LINE 填的答案。\n接著補還沒答的題目（身分證、地址、勞保…）。', 'ok');
@@ -4431,7 +4494,7 @@ p.cn{margin:6px 0 2px}
     state.pre = { id: str(d.id), n: n, nm: nm.slice(0, 100), own: n < 1 };
     pQuery = ''; pAsk = ''; pLoadErr = '';
     view = 'screen'; confirmChecked = false; working = ''; docsLost = 0; pdfLost = false;
-    batches = null; batchErr = null; batchGone = '';
+    batches = null; batchErr = null; batchGone = ''; lateOpen = null;
     resetReview();
     go(step(1, 1));
     showMsg('已經帶入 ' + nm + ' 的姓名、手機' + (n ? '和勞保資料（' + n + ' 份）' : '') + '。\n接著拍身分證。', 'ok');
@@ -4622,7 +4685,7 @@ p.cn{margin:6px 0 2px}
     state = fresh();
     view = 'screen';
     confirmChecked = false; working = ''; docsLost = 0; pdfLost = false;
-    batches = null; batchErr = null; batchGone = '';
+    batches = null; batchErr = null; batchGone = ''; lateOpen = null;
     resetReview();
     notice = msg || '';
     go(0);
@@ -4775,7 +4838,11 @@ p.cn{margin:6px 0 2px}
   });
 
   // 核對頁「勞保每一列（AI 讀錯才改）」展開、收起：記著，整頁重畫時照舊
-  app.addEventListener('toggle', function (e) { if (e.target && e.target.id === 'lbmore') lbOpen = e.target.open; }, true);
+  app.addEventListener('toggle', function (e) {
+    if (e.target && e.target.id === 'lbmore') lbOpen = e.target.open;
+    // 截止後可補報那一塊：畫成打開時瀏覽器也會丟一次 toggle，跟畫的一樣就不算寫手按的（不然預設打開會被記成一直打開）
+    else if (e.target && e.target.id === 'latemore' && e.target.open !== lateShown) lateOpen = lateShown = e.target.open;
+  }, true);
 
   // 單行輸入框按 Enter＝下一題；通關碼按 Enter＝確定（打中文選字時不算）
   app.addEventListener('keydown', function (e) {
