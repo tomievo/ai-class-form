@@ -567,6 +567,7 @@ p.cn{margin:6px 0 2px}
   var HEALTH_NEW_ASK_ALL = false, HEALTH_SKIP = ['digital', 'usedAi', 'why', 'aiHelp'];
   function isHealth() { return !!(state && (state.lineId || state.pre)) || (partnerOn && !G_TOKEN); }   // 學員手機掃 QR（多人一起報名）不看這台記的代碼
   function healthHide(q) {
+    if (q.type === 'batch' && preBatch()) return true;   // 從名單點進來的：梯次照名單上那一梯，不問（11/26）
     if (!isHealth() || lineText(q)) return false;
     return HEALTH_NEW_ASK_ALL === true && !state.pre && !state.lineId ? HEALTH_SKIP.indexOf(q.id) >= 0 : HEALTH_ASK.indexOf(q.id) < 0;
   }
@@ -783,6 +784,7 @@ p.cn{margin:6px 0 2px}
     s.tok = str(d.tok);
     // 從「已有勞保資料的學員」名單點進來的（11/25，PRELOAD 開著的那一家；沒有這一鍵＝不是：其他人存的跟以前一樣）
     if (preOk(d.pre)) s.pre = { id: d.pre.id, n: Number(d.pre.n), nm: str(d.pre.nm).slice(0, 100), own: d.pre.own === true || Number(d.pre.n) < 1 };
+    if (s.pre && str(d.pre.cb) && s.batch && s.batch['梯次'] === str(d.pre.cb)) s.pre.cb = str(d.pre.cb);   // 名單上那一梯（11/26）
     return s;
   }
   // 介紹人那一題（KNOWN 192）存的時候沒有、現在有：選梯次之後的畫面（梯次、確認頁、核對頁、列印頁）往後挪一個；反過來往前挪。回到同一個畫面
@@ -1604,6 +1606,8 @@ p.cn{margin:6px 0 2px}
       h += '<li class="item"><div class="txt"><div class="k">' + esc(k) + '</div><div class="v">' + showHTML(q) + '</div></div>' +
         '<button type="button" class="edit" data-act="edit" data-q="' + (i + 1) + '" aria-label="改' + esc(k) + '">改</button></li>';
     });
+    if (preBatch()) h += '<li class="item"><div class="txt"><div class="k">上課梯次（名單上的，不用選）</div><div class="v">' +
+      batchLines(state.batch) + '</div></div></li>';   // 從名單點進來的（11/26）：梯次照名單那一梯，沒有「改」
     h += '</ol>';
     h += '<button type="button" class="opt chk" id="chk" data-act="chk" role="checkbox" aria-label="本人確認：以上都是真的。這些資料只用在這次補助申請，由 AI 協助整理成申請文件。" aria-checked="' + (confirmChecked ? 'true' : 'false') + '">' +
       '<span class="mark">' + CHECK + '</span><span class="t">本人確認：以上都是真的' +
@@ -1917,7 +1921,7 @@ p.cn{margin:6px 0 2px}
     var office = addressOffice();
     if (!office) return '<p class="areat">' + esc(areaMsg()) + '</p>';
     var common = office === '北基宜花金馬' ? '北基宜花金馬（共用高屏版）' : office + '版';
-    var form = office === '桃竹苗' || office === '雲嘉南' ? '全國版（' + office + '適用）' : common;
+    var form = office === '桃竹苗' || office === '雲嘉南' || office === '北基宜花金馬' ? '全國版（' + office + '適用）' : common;   // 北基宜花金馬 11/26 起申請書改全國版、切結書照舊高屏版
     var affidavit = office === '雲嘉南' ? '雲嘉南 V4' : common;
     var j = J(), receiver = str(j['通訊地址']) === str(state.fix['通訊地址']) && j['受理分署'] === office ? str(j['收件單位']) : '';
     return '<div class="areainfo"><p>受理分署：' + esc(office) + '分署</p><p>申請書：' + esc(form) +
@@ -2229,7 +2233,8 @@ p.cn{margin:6px 0 2px}
   // 錯了要她本人再跑一趟（台南用立可帶改還要蓋章）：在這裡唸給她聽、她說都對才產生
   // 通訊地址屬雲嘉南（KNOWN 168）印雲嘉南切結書 V4：工會那行多「□職業工會□漁會□農會□屬裁減續保身分」（照名稱勾一格，
   // 跟 填官方表格.工會類型 同一條）、多一條「已知悉…就業保險投保單位」（一律勾）、沒有通訊地址那行；申請表後面多一張身分證影本，
-  // 切結書在整份第 6 頁（身分證欄位留空的沒有那一張：第 5 頁）。通訊地址屬高屏澎東、北基宜花金馬用原高雄版；認不出縣市不出預覽
+  // 切結書在整份第 6 頁（身分證欄位留空的沒有那一張：第 5 頁）。通訊地址屬高屏澎東、北基宜花金馬用原高雄版切結書（北基宜花金馬 11/26 起
+  // 申請表改全國版、後面多一張身分證影本：切結書在第 6 頁，同台南）；認不出縣市不出預覽
   // 通訊地址屬桃竹苗（11/17）印桃竹苗的無工作切結書：只有工會那兩格（類型五格，多「職災續保」，tz＝true 時先認「職災」）、非負責人、
   // 兩條知悉條款（擇一適用、不予發給），沒有①②③、親屬那條、工會名稱線、戶籍地址；申請表、身分證影本、頁碼跟台南一樣
   function unionKind(n, tz) {
@@ -2419,8 +2424,10 @@ p.cn{margin:6px 0 2px}
     if (!addressOffice()) return '<h3 class="st2">切結書預覽</h3><p class="hint" id="pvst" role="status">' + esc(areaMsg()) + '</p>';
     var tn = addressOffice() === '雲嘉南', tc = addressOffice() === '中彰投';   // tc：台中版（中彰投 1-5，11/13）
     var tz = addressOffice() === '桃竹苗';   // tz：桃竹苗無工作切結書（11/17）
+    var tp = addressOffice() === '北基宜花金馬';   // tp：高雄版切結書、申請表全國版後面多一張身分證影本（11/26）
     var j = J(), p = j['切結預覽'], hand = false, h = '<h3 class="st2">' +
-      (tn || tc || tz ? '切結書（' + (tn ? '台南' : tc ? '台中' : '桃竹苗') + '版，整份第 ' + (sheetNoId() ? 5 : 6) + ' 頁）會這樣印' : '切結書（整份第 5 頁）會這樣印') + '</h3>' +
+      (tn || tc || tz ? '切結書（' + (tn ? '台南' : tc ? '台中' : '桃竹苗') + '版，整份第 ' + (sheetNoId() ? 5 : 6) + ' 頁）會這樣印' :
+        '切結書（整份第 ' + (tp && !sheetNoId() ? 6 : 5) + ' 頁）會這樣印') + '</h3>' +
       '<p class="hint" id="pvst" role="status">' + esc(pvText()) + '</p>';
     if (!previewCurrent()) return h + '<p class="hint">' + esc(previewWait()) + '</p>';
     if (!p || typeof p !== 'object') return h + factsHTML(j);
@@ -2858,7 +2865,8 @@ p.cn{margin:6px 0 2px}
     var o = obj(state.out), n = Number(o['頁數']) || 0, nm = nameOf(), pf = files.pdf_print, ef = files.pdf_env;
     var wr = TOUCH && stWriter(), saved = o['已存雲端'] !== false;
     var far = TOUCH && !wr && saved, c1 = far ? 'btn btn2 sm' : 'btn', c2 = far ? 'btn btn2 sm' : 'btn btn2';
-    var h = '<h1>申請文件做好了</h1><p class="lead">學員：' + esc(nm) + '<span class="nw">（編號 ' + state.rid + '）</span></p>';
+    var h = '<h1>申請文件做好了</h1><p class="lead">學員：' + esc(nm) + '<span class="nw">（編號 ' + state.rid + '）</span></p>' +
+      (preBatch() ? '<p class="lead">上課梯次：' + esc(state.pre.cb) + '</p>' : '');   // 從名單點進來的（11/26）：梯次照名單那一梯，在這裡再寫一次
     if (!pf) return h + '<div class="box warn"><p>申請文件沒有存到，要再產生一次。</p></div>' +
       '<button type="button" class="btn" data-act="toReview">回到核對頁</button>';
     // 一小段一小段不拆開（手機上一行約 10 個字）；名字太長才讓它換行，免得超出框
@@ -3327,7 +3335,7 @@ p.cn{margin:6px 0 2px}
   function nextLabel(q) {
     if (state.back >= SUBMIT) return (q.type === 'photo' ? '清楚，' : '改好了，') + (state.back === REVIEW ? '回核對頁' : '回確認頁');
     if (q.type === 'photo') return '清楚，下一步';
-    if (q.type === 'batch') return '下一步：確認資料';
+    if (q.type === 'batch' || (preBatch() && step(QS.indexOf(q) + 2, 1) > N)) return '下一步：確認資料';   // 名單點進來的：最後一題是勞保
     if (q.type === 'multi') return selOf(q).length ? '選好了，下一題' : '跳過這題';
     if (q.type === 'text' && !q.req && !q.keepNext) return textOf(q) ? '下一題' : '跳過這題';
     return '下一題';
@@ -4398,6 +4406,9 @@ p.cn{margin:6px 0 2px}
   var P_ID = /^pre-[0-9a-f]{16}$/;
   function preOk(p) { return PRELOAD === true && !G_TOKEN && !!p && typeof p === 'object' && P_ID.test(str(p.id)) && Number(p.n) >= 0 && Number(p.n) <= MAX_DOCS; }
   function preUse() { return !!(state && state.pre && !state.pre.own && state.pre.n > 0); }   // 用帶入的勞保（還沒改成自己重傳）
+  // 梯次照名單上那一梯（11/26，Tomi：「你要預設他就是 1 月 8 號，不要再選了，選錯很麻煩」）：載入時雲端回了梯次（cb＝那一梯的名稱）
+  // → 不問選梯次那一題、確認頁那一行不能改；舊存檔沒有 cb（或梯次對不上）照舊問
+  function preBatch() { return !!(state && state.pre && state.pre.cb && state.batch && state.batch['梯次'] === state.pre.cb); }
   function pOn() { return PRELOAD === true && !!API && !G_TOKEN && CODE_ON && (partnerOn || !TOUCH); }
   function pHas() { return pOn() && !pListOff && arr(pList && pList['人們']).length > 0; }
   function pStartHTML() {
@@ -4492,12 +4503,15 @@ p.cn{margin:6px 0 2px}
     state.a.name = nm;
     state.a.phone = str(d['手機']);
     state.pre = { id: str(d.id), n: n, nm: nm.slice(0, 100), own: n < 1 };
+    var b = obj(d['梯次']);   // 名單上那一梯（11/26）：雲端只在那一梯能報時回（不能報的載入就擋了、講原因）
+    if (str(b['梯次']) && b['狀態'] === '開放報名') { state.batch = snap(b); state.pre.cb = str(b['梯次']); }
     pQuery = ''; pAsk = ''; pLoadErr = '';
     view = 'screen'; confirmChecked = false; working = ''; docsLost = 0; pdfLost = false;
     batches = null; batchErr = null; batchGone = ''; lateOpen = null;
     resetReview();
     go(step(1, 1));
-    showMsg('已經帶入 ' + nm + ' 的姓名、手機' + (n ? '和勞保資料（' + n + ' 份）' : '') + '。\n接著拍身分證。', 'ok');
+    showMsg('已經帶入 ' + nm + ' 的姓名、手機' + (n ? '和勞保資料（' + n + ' 份）' : '') + '。' +
+      (state.pre.cb ? '\n上課梯次：' + state.pre.cb + '（名單上的，不用選）。' : '') + '\n接著拍身分證。', 'ok');
   }
   function onPreOwn() {   // 勞保那一步「改成自己重傳」：照一般的上傳（選檔、或沒有任何紀錄）
     if (!preUse() || !curQ() || curQ().type !== 'docs') return;
