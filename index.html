@@ -355,6 +355,7 @@ p.cn{margin:6px 0 2px}
 .gno b{display:block;font-size:120px;line-height:1.1;letter-spacing:4px}
 .glist{list-style:none;margin:8px 0 0;padding:0}
 .hint.pnote{margin-top:12px}   /* 已有勞保資料的學員（11/25）：開始畫面按鈕下面那行、名單上面的人數，跟上面的按鈕、搜尋框隔開 */
+.pbad ul{margin:6px 0 0;padding-left:20px}.pbad li{margin:4px 0;word-break:break-all}   /* 名單最下面：自動建檔看不懂的檔（11/26） */
 .gnum{flex:none;min-width:72px;margin-right:12px;font-size:34px;font-weight:800;text-align:center}
 .gdn{display:flex;align-items:center;min-height:60px;margin:0 0 12px;padding:8px 16px;border:3px dashed #7a7a7a;border-radius:14px;color:#333;font-size:22px;font-weight:700}
 .gdn .gnum{font-size:28px}
@@ -394,6 +395,11 @@ p.cn{margin:6px 0 2px}
   // 生日、戶籍地址；資料表多這一行＋那三行（規格 2-2）。雲端不讀身分證、申請表第 2 頁兩格留白，她自己影印貼上
   var NO_ID = '本人自己影印黏貼';
   var NO_ID_LINE = '身分證影本：' + NO_ID;
+  // 地址欄位留空（保健課，Tomi 11/26：「直接留空、產生空白，讓學員印下來之後自己用手寫填寫資料。這個概念跟身分證一樣」）：一個選擇同時管戶籍和
+  // 通訊地址，放在第一個問到地址的地方（拍了身分證＝「現在住的地址跟身分證上一樣嗎？」多一個選項；身分證欄位留空＝打戶籍地址那題下面一顆）。
+  // 資料表多這一行（規格 2-2）；雲端照那一梯的上課地點決定分署，申請表、切結書、信封的地址印空白
+  var NO_ADDR_T = '地址欄位留空';
+  var NO_ADDR_LINE = '地址欄位：留空，本人自己手寫';
   var API = typeof SERVICE_URL === 'string' ? SERVICE_URL.trim().replace(/\/+$/, '') : '';
   var GUARD_MS = 400;    // 換畫面後這段時間內的點擊不算（防連點點到下一題）
   var WAIT_MS = { batches: 45000, read: 120000, gen: 240000, recent: 45000, packet: 90000, judge: 20000, word: 90000 };   // 讀梯次、讀取資料、產生申請文件、列印站的名單和文件、核對頁的預覽、轉 Word 最多等多久，超過當沒成功
@@ -458,8 +464,8 @@ p.cn{margin:6px 0 2px}
       title: '你的手機號碼', hint: '10 個數字，09 開頭' },
     { id: 'email', type: 'text', req: true, kind: 'email', out: 'Email',
       title: '你的 Email 信箱', hint: '申請表必填。若申請人不知道自己的 Email，可請其查看手機內的 Gmail、Google Play 或 App Store 帳號。' },
-    // 戶籍地址不問：從身分證背面讀（規格 v3）
-    { id: 'live', type: 'single', out: '通訊地址',
+    // 戶籍地址不問：從身分證背面讀（規格 v3）。保健課身分證欄位留空、打戶籍地址那題按了「地址欄位留空」：這題不問（11/26）
+    { id: 'live', type: 'single', out: '通訊地址', when: function () { return !(state.noId && noAddrOn()); },
       title: '現在住的地址跟身分證上一樣嗎？', opts: [
         { t: '一樣', o: '同身分證地址', show: '跟身分證上一樣' },
         { t: '不一樣', f: { type: 'text', lines: true, req: true, raw: true, label: '請寫你現在住的地址', hint: '從縣市寫到幾號幾樓' } }
@@ -582,6 +588,13 @@ p.cn{margin:6px 0 2px}
     Object.defineProperty(q, 'title', { get: function () { return isHealth() ? '學完想怎麼用這個技能？' : aiTitle; } });
     q.optsFor = function (h) { return h ? health : ai; };   // 重新打開時的檢查（sanitize）：那時 state 還沒換成存的那一份，照存的 lineId 選
   })();
+  // 「現在住的地址跟身分證上一樣嗎？」：保健課、拍了身分證的人多一個「地址欄位留空」（11/26；身分證欄位留空的人在打戶籍地址那題選）。
+  // 輸出寫「（未填）」，另外多 NO_ADDR_LINE 那一行（buildText）
+  (function () {
+    var q = qById('live'), base = q.opts, blank = base.concat([{ t: NO_ADDR_T, n: '印出來她自己寫', o: EMPTY, show: '地址欄位留空（印出來她自己寫）' }]);
+    Object.defineProperty(q, 'opts', { get: function () { return isHealth() && !state.noId ? blank : base; } });
+    q.optsFor = function (h, noId) { return h && !noId ? blank : base; };   // 重新打開時的檢查（sanitize）：照存的那一份選
+  })();
   // Email：保健課也必填（Tomi 11/26 親口「Email 一定要設為必填喔，沒有必填的話會非常麻煩」；11/25 曾設選填）
   // 勞保資料：從「已有勞保資料的學員」名單點進來、還沒改成自己重傳的（preUse，11/25）標題寫「勞保資料」、不放怎麼下載的說明
   (function () {
@@ -688,6 +701,10 @@ p.cn{margin:6px 0 2px}
 
   // ---------- 她不想拍身分證（10/28；店裡電腦才有，手機一起報名沒有那顆按鈕；11/19 起寫手代碼、店裡碼的手機平板也有） ----------
   function noIdOn() { return state.noId === true; }
+  // 地址欄位留空（保健課，11/26）：身分證欄位留空的人在打戶籍地址那題按（state.noAddr）；拍了身分證的人在「現在住的地址」那題選
+  function noAddrOn() { return isHealth() && (state.noId ? state.noAddr === true : state.a.live === NO_ADDR_T); }
+  // 讀取時送的資料表有沒有那一行（核對頁、產生看這個：雲端也是看資料表）
+  function sheetNoAddr() { return str(state.sheet || buildText()).split('\n').indexOf(NO_ADDR_LINE) >= 0; }
   // 手機、平板：只給雲端認得的寫手代碼、共用的店裡碼（writerName 有值）；學員手機（學員碼、QR 一起報名）、
   // 沒開寫手代碼的那一家（writerName 一直是空的）照舊沒有（11/19 Tomi：寫手用手機幫學員報名也要能留空，KNOWN 160）
   function noIdOk() { return !G_TOKEN && (!TOUCH || !!writerName); }
@@ -734,8 +751,8 @@ p.cn{margin:6px 0 2px}
       var v = d.a[q.id];
       if (q.type === 'text') {
         if (typeof v === 'string') s.a[q.id] = v;
-      } else if (q.type === 'single') {
-        if (typeof v === 'string' && optByT(q, v)) s.a[q.id] = v;
+      } else if (q.type === 'single') {   // 「現在住的地址」：保健課拍了身分證的才有「地址欄位留空」（optsFor，照存的那一份）
+        if (typeof v === 'string' && (q.optsFor ? optByT({ opts: q.optsFor(hl, d.noId === true) }, v) : optByT(q, v))) s.a[q.id] = v;
       } else if (q.type === 'multi' && isArr(v)) {
         var a = v.filter(function (x) { return typeof x === 'string' && (q.optsFor ? optByT({ opts: q.optsFor(hl) }, x) : optByT(q, x)); });
         s.a[q.id] = q.max ? a.slice(0, q.max) : a;
@@ -749,6 +766,7 @@ p.cn{margin:6px 0 2px}
       .slice(0, MAX_DOCS).map(function (x) { return { k: x.k, label: str(x.label), mime: x.mime, size: Number(x.size) || 0 }; });
     s.noLabor = d.noLabor === true && !s.docs.length;
     s.noId = d.noId === true && noIdOk();   // 她不想拍身分證（10/28）：只有店裡電腦、寫手代碼、店裡碼的手機平板（11/19；loadWriter 在 load 前跑）
+    if (d.noAddr === true && s.noId && hl) s.noAddr = true;   // 地址欄位留空（保健課，11/26；按了才有這一鍵，其他人存的跟以前一樣）
     if (d.batch && typeof d.batch === 'object' && typeof d.batch['梯次'] === 'string') s.batch = d.batch;
     if (BATCH_REGIONS === true && (d.rg === 'all' || REGION_ORDER.indexOf(d.rg) >= 0)) s.rg = d.rg;   // 選梯次寫手按的區（KNOWN 199；沒按＝沒有這一鍵）
     var p = Number(d.pos), b = Number(d.back);
@@ -760,7 +778,7 @@ p.cn{margin:6px 0 2px}
         s.rid = Number(d.rid); s.read = d.read; s.fix = fixShape(d.fix); s.sheet = str(d.sheet);
         if (d.jd && typeof d.jd === 'object' && !isArr(d.jd)) s.jd = d.jd;
         // 舊存檔的手改是照課地做的；換了受理分署不能當成新版本的手改。
-        var office = officeOf(s.fix['通訊地址']), oldOffice = s.fix['切結分署'] || officeOf(obj(s.batch)['上課地點']);
+        var office = officeIn(s.fix, s.sheet, s.batch), oldOffice = s.fix['切結分署'] || officeOf(obj(s.batch)['上課地點']);
         if (oldOffice !== office) { s.fix['切結改'] = {}; s.fix['基本資料']['她看過都對'] = false; s.fix['地址待判讀'] = true; }
         var judged = obj(s.jd || obj(s.read)['判讀']);
         if (judged['受理分署'] !== office || nows(judged['通訊地址']) !== nows(s.fix['通訊地址'])) s.fix['基本資料']['她看過都對'] = false;
@@ -922,8 +940,9 @@ p.cn{margin:6px 0 2px}
     });
     if (state.noId) {   // 她不想拍身分證（10/28）：雲端看到這行就不要身分證照片，身分證照下面三行（現場照卡片打的）
       lines.push(NO_ID_LINE);
-      [['身分證字號', 'idNum'], ['出生日期', 'idBirth'], ['戶籍地址', 'idAddr']].forEach(function (x) { lines.push(x[0] + '：' + (textOf(qById(x[1])) || EMPTY)); });
+      [['身分證字號', 'idNum'], ['出生日期', 'idBirth'], ['戶籍地址', 'idAddr']].forEach(function (x) { lines.push(x[0] + '：' + (x[1] === 'idAddr' && noAddrOn() ? EMPTY : textOf(qById(x[1])) || EMPTY)); });
     }
+    if (noAddrOn()) lines.push(NO_ADDR_LINE);   // 地址欄位留空（保健課，11/26）：雲端看到這行就不要地址、分署照上課地點
     if (state.noLabor) lines.push(NO_LABOR_LINE);   // 最後一題之後、本人確認之前（雲端看到這行就不要勞保檔）
     var iq = qById('introducer');   // 介紹人（KNOWN 192，只有開了的那一家有這一題）：有打才多這一行，跳過就沒有
     if (iq && shown(iq) && textOf(iq)) lines.push('介紹人：' + textOf(iq));
@@ -945,6 +964,7 @@ p.cn{margin:6px 0 2px}
     }
     if (q.type === 'batch') return state.batch ? batchLines(state.batch) : '（還沒選）';
     if (q.type === 'range') { var r = rangeOf(q); return esc('從 ' + (r[0] || EMPTY) + ' 到 ' + (r[1] || EMPTY)); }
+    if (q.id === 'idAddr' && noAddrOn()) return esc('地址欄位留空（印出來她自己寫）');   // 保健課（11/26）
     if (q.type === 'text') return esc(textOf(q) || EMPTY);
     if (q.type === 'single') {
       var o = optByT(q, state.a[q.id]);
@@ -989,6 +1009,7 @@ p.cn{margin:6px 0 2px}
       return '';
     }
     if (q.type === 'text') {
+      if (q.id === 'idAddr' && noAddrOn()) return '';   // 地址欄位留空（保健課，11/26）
       var v = textOf(q);
       if (q.kind === 'email' && !v && !q.req) return '';   // 不是必填的 Email 沒填（現在都必填，留著給 req 改回 false）
       if (q.kind === 'tel') {
@@ -1328,7 +1349,7 @@ p.cn{margin:6px 0 2px}
     var h = topHTML(state.pos), tt = titleOf(q);
     h += '<h2 class="qt" id="qt" tabindex="-1">' + (isArr(tt) ? tt.map(function (s) { return '<span class="nw">' + esc(s) + '</span>'; }).join('') : esc(tt)) + '</h2>';
     if (q.how) h += '<p class="how">' + esc(q.how) + '</p>';   // 標題下面的藍字（介紹人那一題，KNOWN 192）
-    if (q.hint) h += '<p class="hint">' + escBr(q.lateHint && lateMode() ? q.lateHint : q.hint) + '</p>';   // 截止後可補報（保健課那幾條路照原本的）
+    if (q.hint && !(q.id === 'idAddr' && noAddrOn())) h += '<p class="hint">' + escBr(q.lateHint && lateMode() ? q.lateHint : q.hint) + '</p>';   // 截止後可補報（保健課那幾條路照原本的）
     if (G_TOKEN && q.id === 'live') h += '<p class="hint">不一樣的話，地址等一下到電腦前再寫</p>';   // 手機一起報名：地址不在手機上打（10/22 驗收）
     if (q.plan && !G_TOKEN) h += '<p class="hint">這題會寫進計畫書，請帶她想清楚</p>';   // 給現場人員看，不輸出（學員自己的手機上不放）
     if (q.type === 'single') h += '<p class="how">點一個答案</p>';
@@ -1345,7 +1366,9 @@ p.cn{margin:6px 0 2px}
     } else if (q.type === 'batch') {
       h += batchHTML();
     } else if (q.type === 'text') {
-      h += fieldHTML(q.id, q, 'qt');
+      if (q.id === 'idAddr' && noAddrOn()) h += '<div class="box ok" role="status"><p>地址欄位留空，<span class="nw">印出來她自己寫</span></p>' +
+        '<p class="sub2">戶籍地址、通訊地址都不用打；申請表、切結書、信封的地址印空白</p></div>';   // 保健課（11/26）
+      else h += fieldHTML(q.id, q, 'qt');
     } else if (q.type === 'range') {   // 兩格：從、到（例子放在格子裡）
       h += '<label class="flabel" for="f_' + q.id + '_from">從</label>' + fieldHTML(q.id + '_from', { ph: '例 100/03/01' }, '') +
         '<label class="flabel" for="f_' + q.id + '_to">到</label>' + fieldHTML(q.id + '_to', { ph: '例 105/08/31' }, '');
@@ -1361,6 +1384,8 @@ p.cn{margin:6px 0 2px}
     }
     h += '<div id="msg" role="alert"></div>';
     if (q.type !== 'photo') h += '<button type="button" class="btn" id="next" data-act="next">下一題</button>';   // 拍照題的按鈕在 fileHTML
+    if (q.id === 'idAddr' && isHealth()) h += noAddrOn() ? '<button type="button" class="linkbtn" data-act="useAddr">改成打地址</button>'   // 保健課（11/26）
+      : '<button type="button" class="btn btn2 sm" data-act="noAddr">地址欄位留空，<span class="nw">印出來她自己寫</span></button>';
     if (q.when === noIdOn) h += '<p class="hint">身分證欄位留空，<span class="nw">之後影印貼在申請表上</span></p>' +
       '<button type="button" class="linkbtn" data-act="useId">改成拍身分證</button>';
     return h + footHTML(false);
@@ -1688,10 +1713,10 @@ p.cn{margin:6px 0 2px}
   function sugOf(j, id, k) { var m = cmpOf(j, k); return typeof m['建議'] === 'string' ? m['建議'] : str(id[k]); }
   // 讀取結果 → 可以改的那一份（3-4 的格式）
   function makeFix(rd) {
-    var id = obj(rd['身分證']), j = obj(rd['判讀']);
+    var id = obj(rd['身分證']), j = obj(rd['判讀']), na = sheetNoAddr();   // 地址欄位留空（保健課，11/26）：地址都不帶
     return fixShape({ '姓名': sugOf(j, id, '姓名'), '身分證字號': sugOf(j, id, '身分證字號'), '出生日期': sugOf(j, id, '出生日期'),
-      '戶籍地址': str(id['戶籍地址']), '通訊地址': str(j['通訊地址']), '郵遞區號': str(j['郵遞區號']), '最後公司職稱': str(lastCo(j)['職稱']),
-      '未投保工作': ngOf(j['未投保工作']), '切結分署': officeOf(j['通訊地址']), '勞保': JSON.parse(JSON.stringify(obj(rd['勞保']))) });
+      '戶籍地址': na ? '' : str(id['戶籍地址']), '通訊地址': na ? '' : str(j['通訊地址']), '郵遞區號': str(j['郵遞區號']), '最後公司職稱': str(lastCo(j)['職稱']),
+      '未投保工作': ngOf(j['未投保工作']), '切結分署': officeIn({ '通訊地址': j['通訊地址'] }, state.sheet, state.batch), '勞保': JSON.parse(JSON.stringify(obj(rd['勞保']))) });
   }
   // 欄位路徑：姓名、身分證字號、出生日期、戶籍地址、通訊地址、郵遞區號；lh.<欄>＝勞保表頭；md.<列>.<欄>＝勞保明細；
   // nb.<列>.<欄>＝農保明細；lastTitle＝舊雲端的職稱；ng.<欄>＝新增的那份（沒保勞保：機構、起、迄；舊雲端還有職稱）；
@@ -1877,7 +1902,17 @@ p.cn{margin:6px 0 2px}
       (open ? '' : '<button type="button" class="edit" data-act="open" data-k="' + k + '" aria-label="改戶籍地址">改</button>') + '</div>' +
       (open ? fixField(k, '照身分證', { lines: true, need: true, uc: uc }) : '') + '</div>';
   }
+  // 地址欄位留空（保健課，11/26）：戶籍、通訊地址兩列只寫「留空，她自己寫」（沒有格子、沒有郵遞區號），受理分署照上課地點
+  function noAddrRowsHTML() {
+    return '<div class="brow" id="b_戶籍地址"><div class="bk">戶籍地址</div><div class="bl"><span class="bv ba">留空，她自己寫</span></div></div>' +
+      '<div class="brow"><div class="bk">通訊地址</div><div class="bl"><span class="bv ba">留空，她自己寫</span></div>' +
+      '<p class="hint">申請表、切結書、信封的地址印空白，印出來請她自己寫</p>' +
+      '<div id="areabox">' + areaHTML() + '</div>' +
+      fixField('ans.email', 'Email', { im: 'email', ph: '申請表要印，請跟她核對' }) + '</div>';
+  }
   function basicHTML() {
+    if (sheetNoAddr()) return '<h2 class="st">基本資料（拿她的身分證對）</h2>' + photosHTML() +
+      basicRow('姓名') + basicRow('身分證字號') + basicRow('出生日期') + noAddrRowsHTML();
     return '<h2 class="st">基本資料（拿她的身分證對）</h2>' + photosHTML() +
       basicRow('姓名') + basicRow('身分證字號') + basicRow('出生日期') + addrRow() +
       '<div class="brow">' + fixField('通訊地址', '通訊地址', { lines: true, need: true }) +
@@ -1894,7 +1929,11 @@ p.cn{margin:6px 0 2px}
     while ((m = re.exec(t))) Object.keys(OFFICE_COUNTIES).forEach(function (o) { if (OFFICE_COUNTIES[o].indexOf(m[1]) >= 0 && !seen[o]) { seen[o] = 1; all.push(o); } });
     return all.length === 1 ? all[0] : '';
   }
-  function addressOffice() { return officeOf(obj(state.fix)['通訊地址']); }
+  // 地址欄位留空（保健課，11/26；送出的資料表有 NO_ADDR_LINE）：沒有地址可以認，照那一梯的上課地點（雲端判讀同一條）
+  function officeIn(fix, sheet, batch) {
+    return str(sheet).split('\n').indexOf(NO_ADDR_LINE) >= 0 ? officeOf(obj(batch)['上課地點']) : officeOf(obj(fix)['通訊地址']);
+  }
+  function addressOffice() { return officeIn(state.fix, state.sheet || buildText(), state.batch); }
   function previewCurrent() {
     var j = J(), office = addressOffice();
     return !!office && !obj(state.fix)['地址待判讀'] && j['受理分署'] === office && nows(j['通訊地址']) === nows(obj(state.fix)['通訊地址']);
@@ -1916,10 +1955,17 @@ p.cn{margin:6px 0 2px}
     return out;
   }
   function areaBad() { return !addressOffice(); }
-  function areaMsg() { return '請把通訊地址的縣市寫清楚，才能選對申請書、切結書和收件單位。'; }
+  function areaMsg() {
+    return sheetNoAddr() ? '地址欄位留空時照上課地點選分署，但這一梯的上課地點看不出縣市：請主辦在後台把上課地點從縣市寫起，或回去打她的地址。'
+      : '請把通訊地址的縣市寫清楚，才能選對申請書、切結書和收件單位。';
+  }
   function areaHTML() {
     var office = addressOffice();
     if (!office) return '<p class="areat">' + esc(areaMsg()) + '</p>';
+    if (sheetNoAddr()) return '<p class="hint">地址欄位留空：受理分署照上課地點（' + esc(str(obj(state.batch)['上課地點'])) + '）</p>' + areaInfo(office);
+    return areaInfo(office);
+  }
+  function areaInfo(office) {
     var common = office === '北基宜花金馬' ? '北基宜花金馬（共用高屏版）' : office + '版';
     var form = office === '桃竹苗' || office === '雲嘉南' || office === '北基宜花金馬' ? '全國版（' + office + '適用）' : common;   // 北基宜花金馬 11/26 起申請書改全國版、切結書照舊高屏版
     var affidavit = office === '雲嘉南' ? '雲嘉南 V4' : common;
@@ -2156,14 +2202,11 @@ p.cn{margin:6px 0 2px}
     });
     return parts.join('、');
   }
-  // 現在的離開原因：現場點過的；沒點過 → 讀取時判讀給的（10/22 起表單不問，多半是空的）→ 保健課再沒有就用系統先選的
-  // （判讀的 推薦離開原因，只有保健課的梯次才有這個鍵，11/25）
+  // 現在的離開原因：現場點過的；沒點過 → 讀取時判讀給的（10/22 起表單不問，多半是空的）。保健課 11/25–26 曾用系統先選的
+  // （推薦離開原因），11/26 Tomi 改成現場問她（KNOWN 243）：跟 AI 課一樣不預先點
   function leaveStr() {
     var v = state.fix['離開原因'];
-    return typeof v === 'string' ? v : str(J0()['離開原因']) || str(J0()['推薦離開原因']);
-  }
-  function leavePicked() {   // 卡片上點著的是系統先選的（現場還沒動過）
-    return typeof state.fix['離開原因'] !== 'string' && !str(J0()['離開原因']) && !!str(J0()['推薦離開原因']);
+    return typeof v === 'string' ? v : str(J0()['離開原因']);
   }
   function ageAt(birth, day) {
     var b = normDate(birth), x = normDate(day);
@@ -2188,12 +2231,13 @@ p.cn{margin:6px 0 2px}
   }
   // 卡片裡的一段（10/22 起放在選定那份的卡片裡；舊雲端另外包一張卡）
   function leaveHTML() {
-    var L = multiParse(LEAVE, leaveStr()), h = '<p class="flabel">為什麼離開這份工作？<span class="sub2">' +
-      (leavePicked() ? '系統先選，請唸給她聽' : '問她，可以點好幾個') + '</span></p><div class="chips">';
+    var L = multiParse(LEAVE, leaveStr()), h = '<p class="flabel">為什麼離開這份工作？<span class="sub2">問她，可以點好幾個</span></p><div class="chips">';
     LEAVE.opts.forEach(function (o, i) {
       h += '<button type="button" class="pk" data-act="leave" data-i="' + i + '" aria-pressed="' + (L.sel.indexOf(o.t) >= 0) + '">' + esc(o.t) + '</button>';
     });
     h += '</div>';
+    // 保健課（Tomi 11/26「表單一樣幫我加上『上一份工作的離職原因』，要改成現場問他」）：沒點只提醒、不擋（申請表那幾格留白、她手勾）
+    if (isHealth() && !L.sel.length) h += '<div class="box warn"><p>離職原因還沒問她：沒點的話，申請表「退出事由」那幾格空白，印出來請她自己勾。</p></div>';
     if (L.sel.indexOf('其他') >= 0) h += '<label class="flabel" for="x_leaveOther">其他：' + esc(LEAVE.opts[LEAVE.opts.length - 1].f.label) + '</label>' +
       '<input type="text" id="x_leaveOther" class="inp" data-fix="leaveOther" autocomplete="off" value="' + esc(L.other) + '">';
     return h + '<div id="leaveage">' + ageHTML() + '</div>';
@@ -2477,7 +2521,8 @@ p.cn{margin:6px 0 2px}
           '桃竹苗版才有這一條，人人都勾') +
         li('知悉不予發給', p['知悉不予發給'] !== false, '婦女申請再就業獎勵，有下列情形之一者，應不予發給；已發給者，經撤銷或廢止後，應以書面行政處分令其限期返還：（下面五款）',
           '桃竹苗版才有這一條，人人都勾') +
-        '</ul><p class="hint">下面印身分證字號、通訊地址、手機（桃竹苗版沒有戶籍地址那行）；立書人簽章、日期她手寫。</p>';
+        '</ul><p class="hint">' + (sheetNoAddr() ? '下面印身分證字號、手機；通訊地址留空，印出來她自己寫（桃竹苗版沒有戶籍地址那行）'
+          : '下面印身分證字號、通訊地址、手機（桃竹苗版沒有戶籍地址那行）') + '；立書人簽章、日期她手寫。</p>';
       if (hand) h += '<p class="hint">「＿年＿月＿日」的日期，印出來她手寫。</p>';
       if (can) h += pvWarnHTML(j);
       return h + factsHTML(j);
@@ -2504,7 +2549,9 @@ p.cn{margin:6px 0 2px}
         w['店後來'] === '還是她的名字' ? '她開的店還掛她的名字：這一格會不實，請跟她確認' : '報名前已篩過，人人都勾') +
       (tc ? '' : li('知悉親屬條款', p['知悉親屬條款'] === true, '本人已知悉申請人不得為雇主或負責人之配偶、直系血親或三親等內之旁系血親。', '人人都勾')) +
       (tn ? li('知悉投保單位', p['知悉投保單位'] !== false, '本人已知悉本要點所定雇主，為就業保險投保單位之民營事業單位、團體或私立學校。', '台南版才有這一條，人人都勾') : '') +
-      '</ul>' + (tn ? '<p class="hint">下面印身分證字號、戶籍地址、手機（台南版沒有通訊地址那行）；立書人簽章、日期她手寫。</p>'
+      '</ul>' + (sheetNoAddr() ? '<p class="hint">下面印身分證字號、手機；' + (tn ? '戶籍地址留空，印出來她自己寫（台南版沒有通訊地址那行）'
+          : '戶籍地址、通訊地址留空，印出來她自己寫') + '；立書人簽章、日期她手寫。</p>'   // 地址欄位留空（保健課，11/26）
+        : tn ? '<p class="hint">下面印身分證字號、戶籍地址、手機（台南版沒有通訊地址那行）；立書人簽章、日期她手寫。</p>'
         : '<p class="hint">下面印身分證字號、戶籍地址、通訊地址、手機（就是上面那幾行）；立書人簽章、日期她手寫。</p>');
     if (hand) h += '<p class="hint">「＿年＿月＿日」的日期，印出來她手寫。</p>';
     if (can) h += pvWarnHTML(j);
@@ -2519,7 +2566,8 @@ p.cn{margin:6px 0 2px}
   function seenHTML() {
     var f = state.fix, rows = [['名字', f['姓名']], ['身分證字號', normId(f['身分證字號'])],
       ['生日', twDate(f['出生日期']) ? '民國 ' + twDate(f['出生日期']) : f['出生日期']], ['戶籍地址', f['戶籍地址']]];
-    if (clean(f['通訊地址']) && nows(f['通訊地址']) !== nows(f['戶籍地址'])) rows.push(['通訊地址', f['通訊地址']]);
+    if (sheetNoAddr()) rows.splice(3, 1, ['戶籍地址', '留空，她自己寫'], ['通訊地址', '留空，她自己寫']);   // 地址欄位留空（保健課，11/26）
+    else if (clean(f['通訊地址']) && nows(f['通訊地址']) !== nows(f['戶籍地址'])) rows.push(['通訊地址', f['通訊地址']]);
     rows.push(['手機', textOf(qById('phone'))], ['Email', textOf(qById('email'))]);
     return '<p class="vt">請把畫面轉給她看：基本資料（申請表、切結書都印這些）都對嗎？</p><dl class="sv">' +
       rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(clean(r[1]) || '（空白）') + '</dd>'; }).join('') + '</dl>';
@@ -3588,6 +3636,7 @@ p.cn{margin:6px 0 2px}
     var q = curQ();
     if (!q || q.id !== 'idFront' || !noIdOk() || (state.fill && !state.lineId) || working) return;
     ['idFront', 'idBack'].forEach(function (k) { dropFile(k); idbDel(k); delete state.had[k]; });
+    if (state.a.live === NO_ADDR_T) { delete state.a.live; state.noAddr = true; }   // 地址欄位留空（保健課，11/26）：改到打戶籍地址那題記著
     state.noId = true;
     // 台中 LINE 報名帶進來的（11/14）：電腦上要補的題多這三題（「上一題」、第幾題／共幾題才算得到）
     if (state.fill) ['idNum', 'idBirth', 'idAddr'].forEach(function (k) { if (state.fillQs.indexOf(k) < 0) state.fillQs.push(k); });
@@ -3597,8 +3646,24 @@ p.cn{margin:6px 0 2px}
     var q = curQ();
     if (!q || q.when !== noIdOn) return;
     state.noId = false;
+    if (state.noAddr) { delete state.noAddr; state.a.live = NO_ADDR_T; }   // 地址欄位留空（保健課，11/26）：改回「現在住的地址」那題的選項
     ['idNum', 'idBirth', 'idAddr'].forEach(function (k) { delete state.a[k]; });
     go(1);
+  }
+  // 地址欄位留空（保健課，11/26）：身分證欄位留空的人在打戶籍地址那題按；打過的字清掉，「現在住的地址」那題不問。「改成打地址」回這一題
+  function onNoAddr() {
+    var q = curQ();
+    if (!q || q.id !== 'idAddr' || !isHealth() || !state.noId) return;
+    state.noAddr = true;
+    delete state.a.idAddr;
+    advance();
+  }
+  function onUseAddr() {
+    var q = curQ();
+    if (!q || q.id !== 'idAddr' || !state.noAddr) return;
+    delete state.noAddr;
+    save();
+    render();
   }
   function undoc(k) {
     state.docs = state.docs.filter(function (x) { return x.k !== k; });
@@ -3788,7 +3853,10 @@ p.cn{margin:6px 0 2px}
   // 送出前的格式檢查；有問題回傳 {path, msg}
   // 只擋缺了就做不出文件的五格（空白才擋；字號格式、郵遞區號、日期寫法、職稱都不擋，交給提醒和唸給她聽）
   var MUST = [['姓名', '姓名（身分證）'], ['身分證字號', '身分證字號（身分證）'], ['出生日期', '出生日期（身分證）'], ['戶籍地址', '戶籍地址'], ['通訊地址', '通訊地址']];
-  function missingFix() { return MUST.filter(function (m) { return !clean(fixGet(m[0])); }); }
+  function missingFix() {   // 地址欄位留空（保健課，11/26）：兩個地址不擋（印空白、她自己寫）
+    var na = sheetNoAddr();
+    return MUST.filter(function (m) { return !(na && /地址$/.test(m[0])) && !clean(fixGet(m[0])); });
+  }
   // 送出前的檢查；有問題回傳 {path, msg}
   function checkFix() {
     var m = missingFix()[0];
@@ -3814,6 +3882,7 @@ p.cn{margin:6px 0 2px}
       '通訊地址': clean(f['通訊地址']), '郵遞區號': digits(f['郵遞區號']), '最後公司職稱': clean(f['最後公司職稱']),
       '未投保工作': { '職稱': clean(ng['職稱']), '機構': clean(ng['機構']), '起': d(ng['起']), '迄': d(ng['迄']) },
       '身分證旗標': flags, '勞保': lb, '核對時最後公司': str(lastCo(J())['機構']) };   // 最後公司換了（改了勞保），雲端會退回來重唸（10/12）
+    if (sheetNoAddr()) { o['戶籍地址'] = ''; o['通訊地址'] = ''; o['郵遞區號'] = ''; }   // 地址欄位留空（保健課，11/26）：雲端也不看
     // 10/15 新鍵（契約第 10 節，全部選填）：版本 2＝雲端要看「她看過都對」；最後工作＝現場選的那份（有候選工作才送，沒送＝照推薦）；
     // 舊鍵照送：選勞保上的 → 最後公司職稱＝那份的職稱、未投保工作空白；選新增的 → 未投保工作＝那四格、最後公司職稱空白。
     // 10/22：卡片多「工作內容」（帶這一格＝雲端照卡片、不回頭用資料表）、「公保軍保」（＋新增那份）；職稱、為什麼離開都是卡片上問的
@@ -4410,7 +4479,8 @@ p.cn{margin:6px 0 2px}
   // → 不問選梯次那一題、確認頁那一行不能改；舊存檔沒有 cb（或梯次對不上）照舊問
   function preBatch() { return !!(state && state.pre && state.pre.cb && state.batch && state.batch['梯次'] === state.pre.cb); }
   function pOn() { return PRELOAD === true && !!API && !G_TOKEN && CODE_ON && (partnerOn || !TOUCH); }
-  function pHas() { return pOn() && !pListOff && arr(pList && pList['人們']).length > 0; }
+  // 名單是空的、但合作單位資料夾裡有看不懂的檔（自動同步，11/26）也放那顆：要點進去才看得到哪幾個檔要改名
+  function pHas() { return pOn() && !pListOff && (arr(pList && pList['人們']).length > 0 || arr(pList && pList['問題們']).length > 0); }
   function pStartHTML() {
     var has = pHas(), list = '<button type="button" class="btn' + (state.pre ? ' btn2' : '') + '" data-act="pPage">已有勞保資料的學員<span class="nw">（從名單選）</span></button>';
     if (state.pre) {   // 從名單點進來的那一位還沒做完（從第 1 題按上一題、名單按回開始畫面）：先接著做；全新報名要先清掉她（再按一次確定）
@@ -4458,8 +4528,16 @@ p.cn{margin:6px 0 2px}
     var hit = all.filter(function (p) { return !q || str(p['姓名']).replace(/\s+/g, '').indexOf(q) >= 0 || (/^\d+$/.test(q) && str(p['手機末三碼']).indexOf(q) >= 0); });
     var h = '<p class="hint pnote">還沒報名 ' + left + ' 位、已報名 ' + (all.length - left) + ' 位</p>' + (pAsk ? pAskHTML(all) : '') + pLoadErr;
     h += hit.length ? '<ol class="glist">' + hit.map(pRowHTML).join('') + '</ol>'
+      : !all.length ? '<p class="hint">名單上還沒有人。</p>'   // 只有看不懂的檔（自動同步，11/26）
       : '<p class="hint">名單上沒有「' + esc(pQuery) + '」。<span class="nw">換個字找，</span><span class="nw">或回開始畫面按「全新報名」。</span></p>';
-    return h + '<button type="button" class="alt" data-act="pReload">重新整理名單</button>';
+    return h + '<button type="button" class="alt" data-act="pReload">重新整理名單</button>' + pBadHTML();
+  }
+  function pBadHTML() {   // 自動同步讀不懂的檔（11/26；雲端只回給那個合作單位的代碼、店裡碼）：改了檔名，下一次同步（幾分鐘內）就會建進名單
+    var bad = arr(pList && pList['問題們']).map(obj);
+    if (!bad.length) return '';
+    return '<div class="box warn pbad"><p>這幾個檔看不懂，請把檔名改成「姓名＋手機」<span class="nw">（例如：王小美0912345678）：</span></p><ul>' +
+      bad.map(function (b) { return '<li>' + esc(str(b['原名'])) + '<br>（' + esc(str(b['原因'])) + '）</li>'; }).join('') +
+      '</ul><p class="hint">改好之後幾分鐘內會自動建進名單，<span class="nw">再按「重新整理名單」看。</span></p></div>';
   }
   function pRowHTML(p) {
     var id = str(p.id), nm = str(p['姓名']) || '（沒有姓名）', tail = '手機末三碼 ' + str(p['手機末三碼']), done = p['狀態'] === '已報名';
@@ -4714,7 +4792,7 @@ p.cn{margin:6px 0 2px}
     return null;
   }
   var GUARDED = { start: 1, resume: 1, opt: 1, next: 1, back: 1, send: 1, edit: 1, batch: 1, gen: 1, codeOk: 1, endAsk: 1, nextAsk: 1, reeditAsk: 1,
-    station: 1, stPrint: 1, retry: 1, noLabor: 1, noId: 1, useId: 1, redo: 1, dl: 1 };
+    station: 1, stPrint: 1, retry: 1, noLabor: 1, noId: 1, useId: 1, noAddr: 1, useAddr: 1, redo: 1, dl: 1 };
 
   app.addEventListener('click', function (e) {
     var el = actEl(e.target);
@@ -4734,6 +4812,8 @@ p.cn{margin:6px 0 2px}
       case 'noLabor': onNoLabor(); break;
       case 'noId': onNoId(); break;
       case 'useId': onUseId(); break;
+      case 'noAddr': onNoAddr(); break;
+      case 'useAddr': onUseAddr(); break;
       case 'batch': onBatch(Number(el.getAttribute('data-i'))); break;
       case 'batchRg': state.rg = el.getAttribute('data-r'); keepRegion(state.rg); save(); render(); break;   // 選梯次的區按鈕（KNOWN 199）
       case 'reloadBatches': loadBatches(); render(); break;
