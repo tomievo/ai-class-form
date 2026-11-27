@@ -4573,8 +4573,8 @@ p.cn{margin:6px 0 2px}
   }
   function pPageHTML() {
     return '<h1>已有勞保資料的學員</h1>' +
-      '<p class="hint">合作單位已經查好勞保的學員。<span class="nw">點她的名字：</span><span class="nw">姓名、手機、勞保會帶進來，</span>' +
-      '<span class="nw">接著拍身分證、補地址。</span></p>' +
+      '<p class="hint">合作單位已經查好勞保的學員。<span class="nw">點她的名字：</span><span class="nw">姓名和勞保會帶進來，</span>' +
+      '<span class="nw">接著拍身分證、確認姓名和手機。</span></p>' +
       '<label class="flabel" for="f_psearch">打姓名找</label>' +
       '<input type="search" id="f_psearch" class="field" autocomplete="off" enterkeyhint="search" placeholder="例如：王" value="' + esc(pQuery) + '">' +
       '<div id="plistbox">' + pRowsHTML() + '</div>' +
@@ -4594,12 +4594,12 @@ p.cn{margin:6px 0 2px}
   function pBadHTML() {   // 自動同步讀不懂的檔（11/26；雲端只回給那個合作單位的代碼）：改了檔名，下一次同步（幾分鐘內）就會建進名單
     var bad = arr(pList && pList['問題們']).map(obj);
     if (!bad.length) return '';
-    return '<div class="box warn pbad"><p>這幾個檔看不懂，請把檔名改成「姓名＋手機」<span class="nw">（例如：王小美0912345678）：</span></p><ul>' +
+    return '<div class="box warn pbad"><p>這幾份勞保資料需要處理，請依每一筆的原因補正。</p><ul>' +
       bad.map(function (b) { return '<li>' + esc(str(b['原名'])) + '<br>（' + esc(str(b['原因'])) + '）</li>'; }).join('') +
-      '</ul><p class="hint">改好之後幾分鐘內會自動建進名單，<span class="nw">再按「重新整理名單」看。</span></p></div>';
+      '</ul><p class="hint">補好後系統會再檢查，<span class="nw">再按「重新整理名單」看。</span></p></div>';
   }
   function pRowHTML(p) {
-    var id = str(p.id), nm = str(p['姓名']) || '（沒有姓名）', tail = '手機末三碼 ' + str(p['手機末三碼']), done = p['狀態'] === '已報名';
+    var id = str(p.id), nm = str(p['姓名']) || '（沒有姓名）', tail = p['手機末三碼'] ? '手機末三碼 ' + str(p['手機末三碼']) : '手機待確認', done = p['狀態'] === '已報名';
     if (pLoading === id) return '<li><div class="box warn" role="status"><p>正在拿 ' + esc(nm) + ' 的資料，請稍等…</p></div></li>';
     return '<li><button type="button" class="opt"' + (done ? ' disabled' : ' data-act="pPick" data-id="' + esc(id) + '"') +
       ' aria-label="' + esc(nm + '，' + tail + (done ? '，已報名' : '')) + '"><span class="t">' + esc(nm) +
@@ -4649,8 +4649,8 @@ p.cn{margin:6px 0 2px}
     batches = null; batchErr = null; batchGone = ''; lateOpen = null;
     resetReview();
     go(step(1, 1));
-    showMsg('已經帶入 ' + nm + ' 的姓名、手機' + (n ? '和勞保資料（' + n + ' 份）' : '') + '。' +
-      (state.pre.cb ? '\n上課梯次：' + state.pre.cb + '（名單上的，不用選）。' : '') + '\n接著拍身分證。', 'ok');
+    showMsg('已經帶入 ' + nm + ' 的姓名' + (state.a.phone ? '、手機' : '') + (n ? '和勞保資料（' + n + ' 份）' : '') + '。' +
+      (state.a.phone ? '' : '\n請在手機號碼那一題向本人確認並填入。') + (state.pre.cb ? '\n上課梯次：' + state.pre.cb + '（名單上的，不用選）。' : '') + '\n接著拍身分證。', 'ok');
   }
   function onPreOwn() {   // 勞保那一步「改成自己重傳」：照一般的上傳（選檔、或沒有任何紀錄）
     if (!preUse() || !curQ() || curQ().type !== 'docs') return;
